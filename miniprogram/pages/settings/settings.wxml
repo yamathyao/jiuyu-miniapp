@@ -1,0 +1,10 @@
+<view class="page settings-page">
+  <text class="page-title">难度与辅助</text>
+  <view class="option-list">
+    <view class="option-item">入门</view>
+    <view class="option-item">进阶</view>
+    <view class="option-item">熟练</view>
+    <view class="option-item">专家</view>
+  </view>
+</view>
+

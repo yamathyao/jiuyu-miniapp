@@ -1,0 +1,5 @@
+<view class="page result-page">
+  <text class="result-title">完成一座岛屿</text>
+  <text class="result-copy">这局的用时、错误和提示次数会在这里汇总。</text>
+  <navigator class="primary-button" url="/pages/home/home" open-type="reLaunch">返回首页</navigator>
+</view>
