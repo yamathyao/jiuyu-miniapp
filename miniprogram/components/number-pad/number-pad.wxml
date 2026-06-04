@@ -1,6 +1,0 @@
-<view class="number-pad">
-  <block wx:for="{{numbers}}" wx:key="*this">
-    <button class="number-button" bindtap="handleTap" data-value="{{item}}">{{item}}</button>
-  </block>
-</view>
-

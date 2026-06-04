@@ -1,7 +1,8 @@
 {
   "description": "九屿数独微信小程序",
   "packOptions": {
-    "ignore": []
+    "ignore": [],
+    "include": []
   },
   "setting": {
     "urlCheck": true,
@@ -9,13 +10,33 @@
     "enhance": true,
     "postcss": true,
     "minified": true,
-    "newFeature": true
+    "newFeature": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
-  "compileType": "miniprogram",
+  "compileType": "game",
   "libVersion": "latest",
-  "appid": "touristappid",
+  "appid": "wxd560e4c872f1caa9",
   "projectname": "jiuyu-miniapp",
-  "miniprogramRoot": "miniprogram/",
-  "condition": {}
+  "minigameRoot": "./",
+  "condition": {},
+  "simulatorPluginLibVersion": {},
+  "isGameTourist": false,
+  "editorSetting": {}
 }
-

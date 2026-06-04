@@ -1,8 +1,0 @@
-<view class="sudoku-board">
-  <block wx:for="{{cells}}" wx:key="index">
-    <view class="cell {{item.given ? 'is-given' : ''}}">
-      <text>{{item.value}}</text>
-    </view>
-  </block>
-</view>
-
