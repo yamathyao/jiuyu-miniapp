@@ -115,6 +115,7 @@
 ### 当前详细执行工件
 
 - [小游戏迁移设计](./superpowers/specs/2026-06-04-jiuyu-minigame-migration-design.md)
+- [本地存档设计](./superpowers/specs/2026-06-04-jiuyu-local-save-design.md)
 - [小游戏迁移实施计划](./superpowers/plans/2026-06-04-minigame-migration-implementation.md)
 
 ### 历史参考
