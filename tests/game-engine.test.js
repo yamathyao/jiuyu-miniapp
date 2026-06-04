@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { puzzles } = require("../miniprogram/data/puzzles");
+const { puzzles } = require("../js/data/puzzles");
 const {
   createGame,
   applyInputValue,
@@ -10,7 +10,7 @@ const {
   eraseCellContent,
   undoLastStep,
   buildBoardView
-} = require("../miniprogram/services/game-engine");
+} = require("../js/services/game-engine");
 
 test("applyInputValue writes a value into an editable cell", function () {
   const game = createGame(puzzles[0]);
