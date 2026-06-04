@@ -9,6 +9,7 @@ const {
 } = require("./services/game-engine");
 const { createBoardScene } = require("./scene/board-scene");
 const { createToolbar } = require("./ui/toolbar");
+const { getTouchPoint } = require("./utils/touch");
 
 function boot() {
   if (typeof wx === "undefined" || !wx.createCanvas) {
@@ -17,12 +18,21 @@ function boot() {
 
   const canvas = wx.createCanvas();
   const context = canvas.getContext("2d");
+  const canvasWidth = canvas.width || 375;
+  const canvasHeight = canvas.height || 812;
   let game = createGame(puzzles[0]);
   let selectedIndex = -1;
   let noteMode = false;
 
-  const boardScene = createBoardScene({});
-  const toolbar = createToolbar({});
+  const boardScene = createBoardScene({
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight
+  });
+  const toolbar = createToolbar({
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight,
+    boardMetrics: boardScene.getMetrics()
+  });
 
   function draw() {
     const cells = buildBoardView(game, selectedIndex);
@@ -35,8 +45,13 @@ function boot() {
   }
 
   wx.onTouchStart(function (event) {
-    const touch = event.touches[0];
-    const hitCellIndex = boardScene.getCellIndexByPoint(touch.x, touch.y);
+    const point = getTouchPoint(event);
+
+    if (!point) {
+      return;
+    }
+
+    const hitCellIndex = boardScene.getCellIndexByPoint(point.x, point.y);
 
     if (hitCellIndex >= 0) {
       selectedIndex = hitCellIndex;
@@ -44,7 +59,7 @@ function boot() {
       return;
     }
 
-    const toolbarAction = toolbar.hitTest(touch.x, touch.y);
+    const toolbarAction = toolbar.hitTest(point.x, point.y);
 
     if (!toolbarAction) {
       return;
@@ -64,7 +79,9 @@ function boot() {
       }
 
       if (toolbarAction.value === "undo") {
-        game = undoLastStep(game);
+        const undoResult = undoLastStep(game);
+        game = undoResult.game;
+        selectedIndex = undoResult.selectedIndex;
       }
 
       if (toolbarAction.value === "erase") {

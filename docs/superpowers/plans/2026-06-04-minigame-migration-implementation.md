@@ -478,7 +478,7 @@ Expected:
 现有 6 个逻辑测试继续通过，入口检查也通过
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/services/game-engine.js js/utils/sudoku.js js/data/puzzles.js js/constants.js tests/game-engine.test.js
@@ -790,7 +790,7 @@ Expected:
 全部测试通过
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add js/main.js js/scene/board-scene.js js/ui/toolbar.js
@@ -853,7 +853,7 @@ Expected:
 全部测试通过
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A miniprogram js game.js game.json project.config.json tests/game-engine.test.js
@@ -865,7 +865,7 @@ git commit -m "refactor(game): 清理小程序页面结构"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-04-minigame-migration-implementation.md`
 
-- [ ] **Step 1: 再次运行逻辑测试，确认迁移最终状态通过**
+- [x] **Step 1: 再次运行逻辑测试，确认迁移最终状态通过**
 
 Run:
 
@@ -879,7 +879,7 @@ Expected:
 所有测试通过，0 fail
 ```
 
-- [ ] **Step 2: 在微信开发者工具中执行小游戏 smoke test**
+- [x] **Step 2: 在微信开发者工具中执行小游戏 smoke test**
 
 Manual checks:
 
@@ -902,7 +902,7 @@ Expected:
 小游戏可正常启动并完成最小可玩闭环
 ```
 
-- [ ] **Step 3: 回写计划勾选状态与验证结果**
+- [x] **Step 3: 回写计划勾选状态与验证结果**
 
 ```markdown
 - [x] Step 1: 再次运行逻辑测试，确认迁移最终状态通过

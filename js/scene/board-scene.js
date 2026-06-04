@@ -1,8 +1,29 @@
 function createBoardScene(options) {
-  const boardTop = options.boardTop || 120;
-  const boardLeft = options.boardLeft || 24;
-  const boardSize = options.boardSize || 702;
+  const canvasWidth = options.canvasWidth || 375;
+  const canvasHeight = options.canvasHeight || 812;
+  const horizontalPadding = options.horizontalPadding || Math.max(16, Math.floor(canvasWidth * 0.04));
+  const topPadding = options.topPadding || Math.max(96, Math.floor(canvasHeight * 0.12));
+  const maxBoardSize = Math.min(
+    canvasWidth - horizontalPadding * 2,
+    canvasHeight * 0.62
+  );
+  const boardSize = options.boardSize || Math.floor(maxBoardSize);
+  const boardLeft = options.boardLeft != null
+    ? options.boardLeft
+    : Math.floor((canvasWidth - boardSize) / 2);
+  const boardTop = options.boardTop != null ? options.boardTop : topPadding;
   const cellSize = boardSize / 9;
+
+  function getMetrics() {
+    return {
+      canvasWidth: canvasWidth,
+      canvasHeight: canvasHeight,
+      boardTop: boardTop,
+      boardLeft: boardLeft,
+      boardSize: boardSize,
+      cellSize: cellSize
+    };
+  }
 
   function getCellIndexByPoint(x, y) {
     if (
@@ -83,7 +104,8 @@ function createBoardScene(options) {
 
   return {
     draw,
-    getCellIndexByPoint
+    getCellIndexByPoint,
+    getMetrics
   };
 }
 

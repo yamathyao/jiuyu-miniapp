@@ -1,9 +1,38 @@
 function createToolbar(options) {
-  const top = options.top || 860;
-  const left = options.left || 24;
-  const width = options.width || 702;
-  const numberHeight = 64;
-  const toolTop = top + 92;
+  const canvasWidth = options.canvasWidth || 375;
+  const canvasHeight = options.canvasHeight || 812;
+  const boardMetrics = options.boardMetrics || {};
+  const width = options.width || boardMetrics.boardSize || (canvasWidth - 48);
+  const left = options.left != null
+    ? options.left
+    : boardMetrics.boardLeft != null
+      ? boardMetrics.boardLeft
+      : Math.floor((canvasWidth - width) / 2);
+  const numberHeight = options.numberHeight || Math.max(52, Math.floor(canvasHeight * 0.075));
+  const gap = options.gap || Math.max(18, Math.floor(canvasHeight * 0.03));
+  const toolHeight = options.toolHeight || numberHeight;
+  const defaultTop = boardMetrics.boardTop != null
+    ? Math.min(
+        boardMetrics.boardTop + boardMetrics.boardSize + gap,
+        canvasHeight - numberHeight - toolHeight - gap - 16
+      )
+    : Math.max(0, canvasHeight - numberHeight - toolHeight - gap - 16);
+  const top = options.top != null ? options.top : defaultTop;
+  const toolTop = top + numberHeight + gap;
+
+  function getMetrics() {
+    return {
+      canvasWidth: canvasWidth,
+      canvasHeight: canvasHeight,
+      top: top,
+      left: left,
+      width: width,
+      numberHeight: numberHeight,
+      toolTop: toolTop,
+      toolHeight: toolHeight,
+      gap: gap
+    };
+  }
 
   function draw(context, noteMode) {
     const numberWidth = width / 9;
@@ -31,12 +60,12 @@ function createToolbar(options) {
 
     tools.forEach(function (tool, index) {
       context.fillStyle = tool.key === "note" && noteMode ? "#1f6f78" : "#edf3f2";
-      context.fillRect(left + index * toolWidth, toolTop, toolWidth - 6, 64);
+      context.fillRect(left + index * toolWidth, toolTop, toolWidth - 6, toolHeight);
       context.fillStyle = tool.key === "note" && noteMode ? "#ffffff" : "#1f2933";
       context.font = "20px sans-serif";
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.fillText(tool.label, left + index * toolWidth + toolWidth / 2, toolTop + 32);
+      context.fillText(tool.label, left + index * toolWidth + toolWidth / 2, toolTop + toolHeight / 2);
     });
   }
 
@@ -50,7 +79,7 @@ function createToolbar(options) {
       };
     }
 
-    if (y >= toolTop && y <= toolTop + 64 && x >= left && x <= left + width) {
+    if (y >= toolTop && y <= toolTop + toolHeight && x >= left && x <= left + width) {
       const toolWidth = width / 3;
       const index = Math.floor((x - left) / toolWidth);
       return {
@@ -64,7 +93,8 @@ function createToolbar(options) {
 
   return {
     draw,
-    hitTest
+    hitTest,
+    getMetrics
   };
 }
 

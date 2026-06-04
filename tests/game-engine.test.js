@@ -3,6 +3,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { puzzles } = require("../js/data/puzzles");
+const { createBoardScene } = require("../js/scene/board-scene");
+const { createToolbar } = require("../js/ui/toolbar");
+const { getTouchPoint } = require("../js/utils/touch");
 const {
   createGame,
   applyInputValue,
@@ -49,13 +52,14 @@ test("eraseCellContent clears notes in note mode and value in normal mode", func
   assert.equal(erasedValue.cells[2].value, "");
 });
 
-test("undoLastStep restores the previous editable state", function () {
+test("undoLastStep restores the previous editable state and returns the undone index", function () {
   const game = createGame(puzzles[0]);
   const changed = applyInputValue(game, 2, "4");
-  const restored = undoLastStep(changed);
+  const result = undoLastStep(changed);
 
-  assert.equal(restored.cells[2].value, "");
-  assert.equal(restored.history.length, 0);
+  assert.equal(result.game.cells[2].value, "");
+  assert.equal(result.game.history.length, 0);
+  assert.equal(result.selectedIndex, 2);
 });
 
 test("buildBoardView marks selected, related, and same-value cells", function () {
@@ -79,4 +83,42 @@ test("project config is switched to game compile type", function () {
   );
 
   assert.equal(projectConfig.compileType, "game");
+});
+
+test("minigame layout keeps toolbar inside a narrow portrait canvas", function () {
+  const canvasWidth = 375;
+  const canvasHeight = 812;
+  const boardScene = createBoardScene({
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight
+  });
+  const toolbar = createToolbar({
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight,
+    boardMetrics: boardScene.getMetrics()
+  });
+  const boardMetrics = boardScene.getMetrics();
+  const toolbarMetrics = toolbar.getMetrics();
+
+  assert.ok(boardMetrics.boardLeft >= 0);
+  assert.ok(boardMetrics.boardTop >= 0);
+  assert.ok(boardMetrics.boardLeft + boardMetrics.boardSize <= canvasWidth);
+  assert.ok(toolbarMetrics.top + toolbarMetrics.numberHeight <= canvasHeight);
+  assert.ok(toolbarMetrics.toolTop + toolbarMetrics.toolHeight <= canvasHeight);
+});
+
+test("getTouchPoint reads client coordinates from minigame touch events", function () {
+  const point = getTouchPoint({
+    touches: [
+      {
+        clientX: 128,
+        clientY: 256
+      }
+    ]
+  });
+
+  assert.deepEqual(point, {
+    x: 128,
+    y: 256
+  });
 });

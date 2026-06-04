@@ -133,7 +133,10 @@ function eraseCellContent(game, index, noteMode) {
 
 function undoLastStep(game) {
   if (!game.history.length) {
-    return game;
+    return {
+      game: game,
+      selectedIndex: -1
+    };
   }
 
   const nextGame = cloneGame(game);
@@ -143,7 +146,10 @@ function undoLastStep(game) {
   targetCell.value = lastStep.value;
   targetCell.notes = lastStep.notes.slice();
 
-  return nextGame;
+  return {
+    game: nextGame,
+    selectedIndex: lastStep.index
+  };
 }
 
 function buildBoardView(game, selectedIndex) {
