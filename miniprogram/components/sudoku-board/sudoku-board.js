@@ -1,12 +1,16 @@
 Component({
-  data: {
-    cells: Array.from({ length: 81 }, function (_, index) {
-      return {
-        index: index,
-        value: "",
-        given: false
-      };
-    })
+  properties: {
+    cells: {
+      type: Array,
+      value: []
+    }
+  },
+
+  methods: {
+    handleCellTap(event) {
+      this.triggerEvent("select", {
+        index: event.currentTarget.dataset.index
+      });
+    }
   }
 });
-

@@ -2,7 +2,7 @@
   display: grid;
   grid-template-columns: repeat(9, 1fr);
   overflow: hidden;
-  border: 3rpx solid #1f2933;
+  border: 4rpx solid #1f2933;
   background: #1f2933;
   aspect-ratio: 1;
 }
@@ -14,11 +14,42 @@
   margin: 1rpx;
   background: #ffffff;
   color: #1f2933;
+  min-height: 72rpx;
+}
+
+.is-related {
+  background: #f4efe4;
+}
+
+.is-same-value {
+  background: #dceee8;
+}
+
+.is-selected {
+  background: #9ed9c8;
+}
+
+.cell-value {
   font-size: 34rpx;
 }
 
-.is-given {
-  background: #edf3f2;
+.is-given .cell-value {
   font-weight: 700;
 }
 
+.cell-notes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  padding: 6rpx;
+  box-sizing: border-box;
+}
+
+.note-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16rpx;
+  color: #607078;
+}

@@ -1,8 +1,5 @@
 <view class="game-toolbar">
-  <button class="tool-button" data-command="note" bindtap="handleCommand">笔记</button>
+  <button class="tool-button {{noteMode ? 'is-active' : ''}}" data-command="note" bindtap="handleCommand">笔记</button>
   <button class="tool-button" data-command="undo" bindtap="handleCommand">撤销</button>
   <button class="tool-button" data-command="erase" bindtap="handleCommand">擦除</button>
-  <button class="tool-button" data-command="hint" bindtap="handleCommand">提示</button>
-  <button class="tool-button" data-command="check" bindtap="handleCommand">检查</button>
 </view>
-

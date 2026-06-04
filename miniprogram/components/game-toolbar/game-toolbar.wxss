@@ -1,6 +1,6 @@
 .game-toolbar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8rpx;
 }
 
@@ -13,7 +13,11 @@
   font-size: 24rpx;
 }
 
+.tool-button.is-active {
+  background: #1f6f78;
+  color: #ffffff;
+}
+
 .tool-button::after {
   border: 0;
 }
-

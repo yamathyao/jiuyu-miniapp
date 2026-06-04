@@ -1,12 +1,11 @@
 <view class="page game-page">
   <view class="game-status">
-    <text>入门</text>
+    <text>{{difficultyLabel}}</text>
     <text>00:00</text>
     <text>错误 0</text>
   </view>
 
-  <sudoku-board></sudoku-board>
-  <number-pad></number-pad>
-  <game-toolbar></game-toolbar>
+  <sudoku-board cells="{{boardCells}}" bind:select="handleCellSelect"></sudoku-board>
+  <number-pad bind:input="handleNumberInput"></number-pad>
+  <game-toolbar note-mode="{{noteMode}}" bind:command="handleToolbarCommand"></game-toolbar>
 </view>
-
