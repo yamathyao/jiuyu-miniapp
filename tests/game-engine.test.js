@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const { puzzles } = require("../miniprogram/data/puzzles");
 const {
@@ -64,4 +66,17 @@ test("buildBoardView marks selected, related, and same-value cells", function ()
   assert.equal(boardView[2].selected, true);
   assert.equal(boardView[0].related, true);
   assert.equal(boardView[36].sameValue, true);
+});
+
+test("minigame entry files exist", function () {
+  assert.equal(fs.existsSync(path.join(__dirname, "..", "game.js")), true);
+  assert.equal(fs.existsSync(path.join(__dirname, "..", "game.json")), true);
+});
+
+test("project config is switched to game compile type", function () {
+  const projectConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "project.config.json"), "utf8")
+  );
+
+  assert.equal(projectConfig.compileType, "game");
 });
