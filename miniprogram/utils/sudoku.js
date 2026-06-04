@@ -12,9 +12,33 @@ function getBox(index) {
   return Math.floor(row / 3) * 3 + Math.floor(column / 3);
 }
 
+function isSameRow(leftIndex, rightIndex) {
+  return getRow(leftIndex) === getRow(rightIndex);
+}
+
+function isSameColumn(leftIndex, rightIndex) {
+  return getColumn(leftIndex) === getColumn(rightIndex);
+}
+
+function isSameBox(leftIndex, rightIndex) {
+  return getBox(leftIndex) === getBox(rightIndex);
+}
+
+function isRelatedCell(leftIndex, rightIndex) {
+  return (
+    leftIndex === rightIndex ||
+    isSameRow(leftIndex, rightIndex) ||
+    isSameColumn(leftIndex, rightIndex) ||
+    isSameBox(leftIndex, rightIndex)
+  );
+}
+
 module.exports = {
   getRow,
   getColumn,
-  getBox
+  getBox,
+  isSameRow,
+  isSameColumn,
+  isSameBox,
+  isRelatedCell
 };
-
