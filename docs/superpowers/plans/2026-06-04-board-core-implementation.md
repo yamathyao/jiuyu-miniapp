@@ -1,3 +1,6 @@
+> Historical note: this plan targets the mini program board-core implementation path and is no longer the active execution path.  
+> Current execution should follow [九屿当前实施计划](../../2026-06-04-jiuyu-current-implementation-plan.md) and [Jiuyu Minigame Migration Implementation Plan](./2026-06-04-minigame-migration-implementation.md).
+
 # Jiuyu Board Core Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
