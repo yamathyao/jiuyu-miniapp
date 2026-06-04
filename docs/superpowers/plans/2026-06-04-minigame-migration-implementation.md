@@ -47,7 +47,7 @@
 - Create: `js/main.js`
 - Modify: `project.config.json`
 
-- [ ] **Step 1: 写失败配置检查脚本，锁定小游戏入口缺失问题**
+- [x] **Step 1: 写失败配置检查脚本，锁定小游戏入口缺失问题**
 
 ```js
 const assert = require("node:assert/strict");
@@ -71,7 +71,7 @@ test("project config is switched to game compile type", function () {
 
 将以上内容先追加到 `tests/game-engine.test.js` 末尾，作为迁移入口护栏。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run:
 
@@ -85,7 +85,7 @@ Expected:
 至少 1 个失败，原因是缺少 game.js/game.json 或 compileType 仍为 miniprogram
 ```
 
-- [ ] **Step 3: 创建最小小游戏入口文件**
+- [x] **Step 3: 创建最小小游戏入口文件**
 
 `game.js`
 
@@ -123,7 +123,7 @@ function boot() {
 boot();
 ```
 
-- [ ] **Step 4: 修改 `project.config.json` 为小游戏入口配置**
+- [x] **Step 4: 修改 `project.config.json` 为小游戏入口配置**
 
 将关键字段调整为：
 
@@ -136,7 +136,7 @@ boot();
 
 保留现有 `appid`、`projectname`、`setting` 等字段，只替换与项目形态直接相关的配置，不顺手清理其它本地字段。
 
-- [ ] **Step 5: 运行测试并确认入口护栏通过**
+- [x] **Step 5: 运行测试并确认入口护栏通过**
 
 Run:
 
@@ -150,7 +150,7 @@ Expected:
 新增的入口检查通过；旧的 game-engine 测试此时仍可能因为 require 路径未切换而继续通过或待后续任务接线
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add game.js game.json js/main.js project.config.json tests/game-engine.test.js
@@ -166,7 +166,7 @@ git commit -m "feat(game): 建立小游戏入口结构"
 - Create: `js/constants.js`
 - Modify: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 调整测试引用到新目录，先制造失败**
+- [x] **Step 1: 调整测试引用到新目录，先制造失败**
 
 将 `tests/game-engine.test.js` 中的 require 改为：
 
@@ -182,7 +182,7 @@ const {
 } = require("../js/services/game-engine");
 ```
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run:
 
@@ -196,7 +196,7 @@ Expected:
 FAIL，并提示找不到 ../js/data/puzzles 或 ../js/services/game-engine
 ```
 
-- [ ] **Step 3: 复制纯逻辑模块到新目录**
+- [x] **Step 3: 复制纯逻辑模块到新目录**
 
 `js/utils/sudoku.js`
 
@@ -464,7 +464,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 4: 运行测试并确认纯逻辑迁移保持通过**
+- [x] **Step 4: 运行测试并确认纯逻辑迁移保持通过**
 
 Run:
 
@@ -492,7 +492,7 @@ git commit -m "feat(game): 迁移数独纯逻辑模块"
 - Create: `js/ui/toolbar.js`
 - Modify: `js/main.js`
 
-- [ ] **Step 1: 先写场景接口占位，让主程序在缺少实现时失败清晰**
+- [x] **Step 1: 先写场景接口占位，让主程序在缺少实现时失败清晰**
 
 在 `js/main.js` 中先引用尚未实现的场景模块：
 
@@ -501,7 +501,7 @@ const { createBoardScene } = require("./scene/board-scene");
 const { createToolbar } = require("./ui/toolbar");
 ```
 
-- [ ] **Step 2: 运行最小加载测试或 Node require 检查并确认失败**
+- [x] **Step 2: 运行最小加载测试或 Node require 检查并确认失败**
 
 Run:
 
@@ -515,7 +515,7 @@ Expected:
 FAIL，并提示找不到 ./scene/board-scene 或 ./ui/toolbar
 ```
 
-- [ ] **Step 3: 实现棋盘场景模块**
+- [x] **Step 3: 实现棋盘场景模块**
 
 `js/scene/board-scene.js`
 
@@ -614,7 +614,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 4: 实现工具栏模块**
+- [x] **Step 4: 实现工具栏模块**
 
 `js/ui/toolbar.js`
 
@@ -688,7 +688,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 5: 用小游戏主循环串联场景与工具栏**
+- [x] **Step 5: 用小游戏主循环串联场景与工具栏**
 
 将 `js/main.js` 更新为：
 
@@ -776,7 +776,7 @@ function boot() {
 boot();
 ```
 
-- [ ] **Step 6: 运行逻辑测试，确认 UI 接线未破坏纯逻辑**
+- [x] **Step 6: 运行逻辑测试，确认 UI 接线未破坏纯逻辑**
 
 Run:
 
@@ -806,7 +806,7 @@ git commit -m "feat(game): 搭建小游戏数独主场景"
 - Delete: `miniprogram/pages/**`
 - Delete: `miniprogram/components/**`
 
-- [ ] **Step 1: 先确认纯逻辑迁移与小游戏主场景文件都已存在**
+- [x] **Step 1: 先确认纯逻辑迁移与小游戏主场景文件都已存在**
 
 Run:
 
@@ -820,7 +820,7 @@ Expected:
 能看到 js/main.js、js/scene/board-scene.js、js/ui/toolbar.js、js/services/game-engine.js、js/utils/sudoku.js、js/data/puzzles.js
 ```
 
-- [ ] **Step 2: 删除小程序专属入口文件**
+- [x] **Step 2: 删除小程序专属入口文件**
 
 Run:
 
@@ -830,7 +830,7 @@ Remove-Item -LiteralPath miniprogram\app.json
 Remove-Item -LiteralPath miniprogram\app.wxss
 ```
 
-- [ ] **Step 3: 删除小程序页面与组件目录**
+- [x] **Step 3: 删除小程序页面与组件目录**
 
 Run:
 
@@ -839,7 +839,7 @@ Remove-Item -LiteralPath miniprogram\pages -Recurse
 Remove-Item -LiteralPath miniprogram\components -Recurse
 ```
 
-- [ ] **Step 4: 重新运行逻辑测试，确认清理旧目录未影响逻辑层**
+- [x] **Step 4: 重新运行逻辑测试，确认清理旧目录未影响逻辑层**
 
 Run:
 

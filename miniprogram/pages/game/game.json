@@ -1,9 +1,0 @@
-{
-  "navigationBarTitleText": "棋盘",
-  "usingComponents": {
-    "sudoku-board": "/components/sudoku-board/sudoku-board",
-    "number-pad": "/components/number-pad/number-pad",
-    "game-toolbar": "/components/game-toolbar/game-toolbar"
-  }
-}
-
