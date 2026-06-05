@@ -19,6 +19,7 @@ function createToolbar(options) {
     : Math.max(0, canvasHeight - numberHeight - toolHeight - gap - 16);
   const top = options.top != null ? options.top : defaultTop;
   const toolTop = top + numberHeight + gap;
+  const toolKeys = ["note", "undo", "erase", "hint", "check"];
 
   function getMetrics() {
     return {
@@ -34,13 +35,33 @@ function createToolbar(options) {
     };
   }
 
-  function draw(context, noteMode) {
+  function getTools(t) {
+    const translate = typeof t === "function"
+      ? t
+      : function (key) {
+          return key;
+        };
+
+    return toolKeys.map(function (toolKey) {
+      return {
+        key: toolKey,
+        label: translate("toolbar." + toolKey)
+      };
+    });
+  }
+
+  function draw(context, noteMode, theme) {
+    const activeTheme = theme || {};
     const numberWidth = width / 9;
 
     for (let index = 0; index < 9; index += 1) {
-      context.fillStyle = "#ffffff";
-      context.fillRect(left + index * numberWidth, top, numberWidth - 6, numberHeight);
-      context.fillStyle = "#1f6f78";
+      context.fillStyle = activeTheme.buttonShadow || "#d0d7de";
+      context.fillRect(left + index * numberWidth, top + 4, numberWidth - 6, numberHeight);
+      context.fillStyle = activeTheme.boardBase || "#ffffff";
+      context.fillRect(left + index * numberWidth, top, numberWidth - 6, numberHeight - 4);
+      context.fillStyle = activeTheme.buttonHighlight || "#ffffff";
+      context.fillRect(left + index * numberWidth + 2, top + 2, numberWidth - 10, 10);
+      context.fillStyle = activeTheme.toolText || "#1f6f78";
       context.font = "24px sans-serif";
       context.textAlign = "center";
       context.textBaseline = "middle";
@@ -51,17 +72,20 @@ function createToolbar(options) {
       );
     }
 
-    const tools = [
-      { key: "note", label: "笔记" },
-      { key: "undo", label: "撤销" },
-      { key: "erase", label: "擦除" }
-    ];
+    const tools = getTools(theme && theme.t);
     const toolWidth = width / tools.length;
 
     tools.forEach(function (tool, index) {
-      context.fillStyle = tool.key === "note" && noteMode ? "#1f6f78" : "#edf3f2";
-      context.fillRect(left + index * toolWidth, toolTop, toolWidth - 6, toolHeight);
-      context.fillStyle = tool.key === "note" && noteMode ? "#ffffff" : "#1f2933";
+      const isActive = tool.key === "note" && noteMode;
+      context.fillStyle = activeTheme.buttonShadow || "#d0d7de";
+      context.fillRect(left + index * toolWidth, toolTop + 4, toolWidth - 6, toolHeight);
+      context.fillStyle = isActive
+        ? activeTheme.activeToolFill || "#1f6f78"
+        : activeTheme.toolFill || "#edf3f2";
+      context.fillRect(left + index * toolWidth, toolTop, toolWidth - 6, toolHeight - 4);
+      context.fillStyle = isActive
+        ? activeTheme.activeToolText || "#ffffff"
+        : activeTheme.toolText || "#1f2933";
       context.font = "20px sans-serif";
       context.textAlign = "center";
       context.textBaseline = "middle";
@@ -80,11 +104,11 @@ function createToolbar(options) {
     }
 
     if (y >= toolTop && y <= toolTop + toolHeight && x >= left && x <= left + width) {
-      const toolWidth = width / 3;
+      const toolWidth = width / toolKeys.length;
       const index = Math.floor((x - left) / toolWidth);
       return {
         type: "tool",
-        value: ["note", "undo", "erase"][index]
+        value: toolKeys[index]
       };
     }
 
@@ -94,7 +118,8 @@ function createToolbar(options) {
   return {
     draw,
     hitTest,
-    getMetrics
+    getMetrics,
+    getTools
   };
 }
 
