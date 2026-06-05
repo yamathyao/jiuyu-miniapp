@@ -152,9 +152,13 @@ function undoLastStep(game) {
   };
 }
 
-function buildBoardView(game, selectedIndex) {
+function buildBoardView(game, selectedIndex, extraState) {
   const selectedCell = game.cells[selectedIndex];
   const selectedValue = selectedCell ? selectedCell.value : EMPTY_CELL;
+  const issueIndexes = extraState && Array.isArray(extraState.issueIndexes)
+    ? extraState.issueIndexes
+    : [];
+  const hintTargetIndex = extraState ? extraState.hintTargetIndex : -1;
 
   return game.cells.map(function (cell) {
     const hasValue = cell.value !== EMPTY_CELL;
@@ -169,7 +173,9 @@ function buildBoardView(game, selectedIndex) {
       related: selectedIndex >= 0 && isRelatedCell(selectedIndex, cell.index),
       sameValue: Boolean(selectedValue && hasValue && cell.value === selectedValue),
       empty: !hasValue,
-      hasNotes: hasNotes
+      hasNotes: hasNotes,
+      issue: issueIndexes.indexOf(cell.index) >= 0,
+      hintTarget: cell.index === hintTargetIndex
     };
   });
 }
