@@ -6,16 +6,49 @@ function isProDifficulty(difficulty) {
   return difficulty === "skilled" || difficulty === "expert";
 }
 
+function isEnglishTranslator(t) {
+  return typeof t === "function" && t("common.back") === "Back";
+}
+
+function drawWrappedText(context, text, centerX, top, maxWidth, lineHeight, maxLines) {
+  const words = String(text || "").split(" ");
+  const lines = [];
+  let currentLine = "";
+
+  words.forEach(function (word) {
+    const nextLine = currentLine ? currentLine + " " + word : word;
+    const nextWidth = typeof context.measureText === "function"
+      ? context.measureText(nextLine).width
+      : nextLine.length * 8;
+
+    if (nextWidth <= maxWidth || !currentLine) {
+      currentLine = nextLine;
+      return;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  lines.slice(0, maxLines).forEach(function (line, index) {
+    context.fillText(line, centerX, top + lineHeight * index);
+  });
+}
+
 function createHomeScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const brandTop = 110;
-  const primaryButtonTop = 264;
+  const brandTop = 106;
+  const primaryButtonTop = 242;
   const buttonHeight = 58;
-  const secondaryButtonTop = primaryButtonTop + buttonHeight + 18;
-  const difficultyTop = secondaryButtonTop + buttonHeight + 40;
+  const secondaryButtonTop = primaryButtonTop + buttonHeight + 16;
+  const difficultyTop = secondaryButtonTop + buttonHeight + 34;
   const difficultyHeight = 54;
   const difficultyGap = 12;
   const difficultyWidth = contentWidth;
@@ -35,13 +68,19 @@ function createHomeScene(options) {
   }
 
   function getMetrics(renderState) {
+    const t = renderState && typeof renderState.t === "function"
+      ? renderState.t
+      : function (key) {
+          return key;
+        };
+    const isEnglish = isEnglishTranslator(t);
     const difficultyRows = getDifficultyRows(renderState);
-    const settingsTop = difficultyTop + difficultyHeight + 34 +
+    const settingsTop = difficultyTop + difficultyHeight + (isEnglish ? 36 : 28) +
       (difficultyRows > 1 ? (difficultyRows - 1) * (difficultyHeight + difficultyGap) : 0);
     const languageOptionTop = settingsTop + 58;
     const languageOptionHeight = 46;
     const languageOptionWidth = contentWidth;
-    const footerTop = settingsTop + 86;
+    const footerTop = settingsTop + (isEnglish ? 70 : 62);
 
     return {
       brandTitle: "方庭九屿",
@@ -80,32 +119,32 @@ function createHomeScene(options) {
     if (isPro) {
       return {
         tone: "pro",
-        background: "#eef1ee",
-        panelFill: "#fbfaf5",
-        panelShadow: "#bcc6c8",
-        titleColor: "#1c2730",
-        subtitleColor: "#5d696d",
-        accentFill: "#314752",
+        background: "#f2f1ea",
+        panelFill: "#f8f6ef",
+        panelShadow: "#b8b5aa",
+        titleColor: "#314541",
+        subtitleColor: "#66736f",
+        accentFill: "#586f69",
         accentText: "#ffffff",
-        secondaryFill: "#e5e7e1",
-        secondaryText: "#23313f",
-        optionFill: "#f9f7f1",
-        optionSelectedFill: "#d8e0de",
-        optionText: "#243543",
-        footerText: "#667176",
-        ornament: "#70828c",
-        decorTone: "mist",
-        haloFill: "#dde5e3",
-        brandPanelFill: "#f7f4ee",
-        headerWashFill: "#f2f5f2",
-        sealFill: "#88989a",
-        dividerFill: "#8da0ab",
-        brushPrimary: "#6c8088",
-        brushSecondary: "#c7d1cf",
-        brushWash: "#eef2ef",
-        brushText: "#23313f",
-        labelFill: "#596870",
-        helperFill: "#90a0a5",
+        secondaryFill: "#e6e0d6",
+        secondaryText: "#324540",
+        optionFill: "#fbfaf5",
+        optionSelectedFill: "#d7e0d9",
+        optionText: "#334742",
+        footerText: "#6f7871",
+        ornament: "#6b7c74",
+        decorTone: "ink",
+        haloFill: "#e4e1d7",
+        brandPanelFill: "#f4f1e8",
+        headerWashFill: "#ece9df",
+        sealFill: "#8a8b7a",
+        dividerFill: "#9aa299",
+        brushPrimary: "#6a7d77",
+        brushSecondary: "#d7d4ca",
+        brushWash: "#f6f3eb",
+        brushText: "#324540",
+        labelFill: "#607069",
+        helperFill: "#8f9991",
         brandSubtitle: t("home.subtitle.pro"),
         primaryLabel: t("home.primary.continue"),
         secondaryLabel: t("home.primary.newGame"),
@@ -174,10 +213,10 @@ function createHomeScene(options) {
       imageAsset.loaded &&
       typeof context.drawImage === "function"
     ) {
-      const assetWidth = Math.floor(width * 0.82);
-      const assetHeight = height + 22;
+      const assetWidth = Math.floor(width * 0.96);
+      const assetHeight = height + 18;
       const assetLeft = left + Math.floor((width - assetWidth) / 2);
-      const assetTop = top - 11;
+      const assetTop = top - 9;
 
       context.drawImage(
         imageAsset.image,
@@ -296,36 +335,51 @@ function createHomeScene(options) {
 
   function drawBrandBackdrop(context, metrics, visualSpec) {
     context.fillStyle = visualSpec.haloFill;
-    context.fillRect(22, 32, canvasWidth - 44, canvasHeight - 64);
+    context.fillRect(22, 28, canvasWidth - 44, canvasHeight - 56);
 
     context.fillStyle = visualSpec.brandPanelFill;
-    context.fillRect(metrics.contentLeft - 14, 56, contentWidth + 28, 148);
+    context.fillRect(metrics.contentLeft - 14, 52, contentWidth + 28, 140);
 
     context.fillStyle = visualSpec.headerWashFill;
-    context.fillRect(metrics.contentLeft + 4, 76, contentWidth - 8, 96);
+    context.fillRect(metrics.contentLeft + 4, 72, contentWidth - 8, 90);
 
     context.fillStyle = visualSpec.dividerFill;
-    context.fillRect(metrics.contentLeft + 18, 92, 46, 2);
-    context.fillRect(metrics.contentLeft + contentWidth - 64, 92, 46, 2);
+    context.fillRect(metrics.contentLeft + 18, 88, 46, 2);
+    context.fillRect(metrics.contentLeft + contentWidth - 64, 88, 46, 2);
 
     context.fillStyle = visualSpec.sealFill;
-    context.fillRect(metrics.contentLeft + contentWidth - 32, 72, 14, 14);
+    context.fillRect(metrics.contentLeft + contentWidth - 32, 68, 14, 14);
   }
 
   function drawBrandText(context, metrics, visualSpec) {
+    const isEnglish = visualSpec.brandSubtitle === "Start with a gentle round and settle into the rhythm." ||
+      visualSpec.brandSubtitle === "Enter a focused solving rhythm.";
+
     context.fillStyle = visualSpec.titleColor;
     context.font = visualSpec.tone === "pro" ? "bold 34px sans-serif" : "bold 36px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(metrics.brandTitle, canvasWidth / 2, brandTop);
 
-    context.font = "16px sans-serif";
+    context.font = isEnglish ? "14px sans-serif" : "16px sans-serif";
     context.fillStyle = visualSpec.subtitleColor;
-    context.fillText(visualSpec.brandSubtitle, canvasWidth / 2, brandTop + 38);
+    if (isEnglish) {
+      drawWrappedText(
+        context,
+        visualSpec.brandSubtitle,
+        canvasWidth / 2,
+        brandTop + 28,
+        metrics.contentWidth - 20,
+        16,
+        2
+      );
+    } else {
+      context.fillText(visualSpec.brandSubtitle, canvasWidth / 2, brandTop + 38);
+    }
 
-    context.font = "13px sans-serif";
+    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
     context.fillStyle = visualSpec.footerText;
-    context.fillText(visualSpec.currentDifficultyLabel, canvasWidth / 2, brandTop + 68);
+    context.fillText(visualSpec.currentDifficultyLabel, canvasWidth / 2, brandTop + (isEnglish ? 72 : 68));
   }
 
   function drawPrimaryActions(context, metrics, hasSavedGame, visualSpec) {
@@ -396,19 +450,21 @@ function createHomeScene(options) {
   }
 
   function drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t) {
+    const isEnglish = isEnglishTranslator(t);
     const helperLabel = pickerOpen
       ? visualSpec.pickerCollapseLabel
       : visualSpec.pickerExpandLabel;
+    const labelY = metrics.difficultyTop - (isEnglish ? 24 : 18);
 
     context.fillStyle = visualSpec.labelFill;
-    context.font = "13px sans-serif";
+    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
     context.textAlign = "left";
     context.textBaseline = "middle";
-    context.fillText(visualSpec.difficultyLabel, metrics.difficultyLeft, metrics.difficultyTop - 18);
+    context.fillText(visualSpec.difficultyLabel, metrics.difficultyLeft, labelY);
 
     context.textAlign = "right";
     context.fillStyle = visualSpec.helperFill;
-    context.fillText(helperLabel, metrics.difficultyLeft + metrics.difficultyWidth, metrics.difficultyTop - 18);
+    context.fillText(helperLabel, metrics.difficultyLeft + metrics.difficultyWidth, labelY);
 
     if (!pickerOpen) {
       drawDifficultyCard(
@@ -453,7 +509,7 @@ function createHomeScene(options) {
   }
 
   function drawSettingsEntry(context, metrics, visualSpec) {
-    const plaqueWidth = Math.floor(contentWidth * 0.82);
+    const plaqueWidth = Math.floor(contentWidth * 0.76);
     const plaqueLeft = contentLeft + Math.floor((contentWidth - plaqueWidth) / 2);
 
     drawSettingsPlaque(
@@ -461,7 +517,7 @@ function createHomeScene(options) {
       plaqueLeft,
       metrics.settingsTop,
       plaqueWidth,
-      44,
+      42,
       visualSpec.settingsLabel,
       visualSpec
     );

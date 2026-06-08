@@ -173,6 +173,25 @@ function boot() {
     activeScreen = "board";
   }
 
+  function applyDifficultySelection(nextDifficulty) {
+    if (selectedDifficulty === nextDifficulty) {
+      return;
+    }
+
+    selectedDifficulty = nextDifficulty;
+    const puzzle = findPuzzleByDifficulty(selectedDifficulty);
+    game = createGame(puzzle);
+    selectedIndex = -1;
+    noteMode = false;
+    clearFeedbackState();
+    feedbackMessage = t("settings.difficultyChanged", {
+      difficulty: t("difficulty." + selectedDifficulty)
+    });
+    feedbackType = "info";
+    persistGameState();
+    persistSettingsState();
+  }
+
   function continueGame() {
     activeScreen = "board";
     clearFeedbackState();
@@ -329,6 +348,13 @@ function boot() {
       if (settingsAction.type === "action" && settingsAction.value === "language") {
         activeScreen = "language";
         draw();
+        return;
+      }
+
+      if (settingsAction.type === "difficulty") {
+        applyDifficultySelection(settingsAction.value);
+        draw();
+        return;
       }
 
       return;

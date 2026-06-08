@@ -502,11 +502,14 @@ test("home scene only exposes more difficulty options after the picker expands",
   const expandedMetrics = homeScene.getMetrics({
     difficultyPickerOpen: true
   });
+  const collapsedProbeY = collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight +
+    Math.floor((collapsedMetrics.settingsTop - (collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight)) / 2);
+  const expandedProbeY = expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20;
 
   assert.equal(
     homeScene.hitTest(
       collapsedMetrics.difficultyLeft + 20,
-      collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight + collapsedMetrics.difficultyGap + 20,
+      collapsedProbeY,
       {
         hasSavedGame: true,
         selectedDifficulty: "beginner",
@@ -519,7 +522,7 @@ test("home scene only exposes more difficulty options after the picker expands",
   assert.deepEqual(
     homeScene.hitTest(
       expandedMetrics.difficultyLeft + 20,
-      expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20,
+      expandedProbeY,
       {
         hasSavedGame: true,
         selectedDifficulty: "beginner",
@@ -707,6 +710,40 @@ test("home scene keeps settings as a dedicated entry instead of inline language 
   );
 });
 
+test("home scene keeps a balanced vertical rhythm for the default layout", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    difficultyPickerOpen: false
+  });
+
+  assert.ok(metrics.primaryButtonTop > 230);
+  assert.ok(metrics.primaryButtonTop < 255);
+  assert.ok(metrics.difficultyTop - metrics.secondaryButtonTop < 110);
+  assert.ok(metrics.settingsTop - metrics.difficultyTop < 110);
+  assert.ok(metrics.footerTop - metrics.settingsTop < 80);
+});
+
+test("home scene keeps visual spec fields available for difficulty-based styling", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const playfulSpec = homeScene.getVisualSpec({
+    selectedDifficulty: "beginner"
+  });
+  const proSpec = homeScene.getVisualSpec({
+    selectedDifficulty: "expert"
+  });
+
+  assert.equal(playfulSpec.tone, "playful");
+  assert.equal(proSpec.tone, "pro");
+  assert.equal(typeof playfulSpec.ornament, "string");
+  assert.equal(typeof proSpec.helperFill, "string");
+});
+
 test("board scene exposes a settings button hit area in the header", function () {
   const boardScene = createBoardScene({
     canvasWidth: 375,
@@ -760,6 +797,37 @@ test("settings scene keeps the language action on the centered main card", funct
   assert.deepEqual(
     settingsScene.hitTest(metrics.languageCardLeft + metrics.languageCardWidth / 2, metrics.languageCardTop + metrics.languageCardHeight / 2),
     { type: "action", value: "language" }
+  );
+});
+
+test("settings scene exposes four difficulty actions inside the page", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = settingsScene.getMetrics();
+
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.difficultyCardLeft + 10, metrics.difficultyCardTop + 10),
+    { type: "difficulty", value: "beginner" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap + 10,
+      metrics.difficultyCardTop + 10
+    ),
+    { type: "difficulty", value: "intermediate" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.difficultyCardLeft + 10, metrics.difficultySecondRowTop + 10),
+    { type: "difficulty", value: "skilled" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap + 10,
+      metrics.difficultySecondRowTop + 10
+    ),
+    { type: "difficulty", value: "expert" }
   );
 });
 
@@ -1117,6 +1185,231 @@ test("main entry can open settings from board and return without leaving the gam
   }
 });
 
+test("main entry can change preferred difficulty directly inside settings", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.contentLeft + 20,
+        clientY: homeMetrics.settingsTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + settingsMetrics.difficultyCardWidth + settingsMetrics.difficultyCardGap + 20,
+        clientY: settingsMetrics.difficultySecondRowTop + 20
+      }]
+    });
+
+    assert.equal(writes[writes.length - 1][0], STORAGE_KEYS.settings);
+    assert.equal(writes[writes.length - 1][1].preferredDifficulty, "expert");
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry switches the active game when changing difficulty inside settings", function () {
+  const writes = [];
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(text);
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.contentLeft + 20,
+        clientY: homeMetrics.settingsTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + settingsMetrics.difficultyCardWidth + settingsMetrics.difficultyCardGap + 20,
+        clientY: settingsMetrics.difficultySecondRowTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.backLeft + 12,
+        clientY: settingsMetrics.backTop + 12
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    const savedExpertGame = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame &&
+        entry[1] &&
+        entry[1].game &&
+        entry[1].game.difficulty === "expert";
+    });
+    const savedExpertSettings = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings &&
+        entry[1] &&
+        entry[1].preferredDifficulty === "expert";
+    });
+
+    assert.ok(savedExpertGame);
+    assert.ok(savedExpertSettings);
+    assert.ok(texts.includes("专家"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
 test("board scene leaves more top breathing room for the new header", function () {
   const boardScene = createBoardScene({
     canvasWidth: 375,
@@ -1192,9 +1485,21 @@ test("createTranslator returns translated difficulty labels and interpolated cop
   assert.equal(zh("difficulty.beginner"), "新手");
   assert.equal(en("difficulty.beginner"), "Beginner");
   assert.equal(
+    zh("settings.difficultyChanged", {
+      difficulty: zh("difficulty.expert")
+    }),
+    "已切换到专家难度，并开始新棋局。"
+  );
+  assert.equal(
     en("home.currentDifficulty", {
       difficulty: en("difficulty.expert")
     }),
     "Current difficulty: Expert"
+  );
+  assert.equal(
+    en("settings.difficultyChanged", {
+      difficulty: en("difficulty.expert")
+    }),
+    "Switched to Expert and started a new game."
   );
 });

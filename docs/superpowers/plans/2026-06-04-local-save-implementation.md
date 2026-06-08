@@ -30,7 +30,7 @@
 - Modify: `tests/game-engine.test.js`
 - Test: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 在测试文件中先引入尚未存在的存档模块**
+- [x] **Step 1: 在测试文件中先引入尚未存在的存档模块**
 
 在 `tests/game-engine.test.js` 顶部现有 require 后追加：
 
@@ -44,7 +44,7 @@ const {
 } = require("../js/services/storage");
 ```
 
-- [ ] **Step 2: 追加本地存档测试用例**
+- [x] **Step 2: 追加本地存档测试用例**
 
 在 `tests/game-engine.test.js` 末尾追加：
 
@@ -148,7 +148,7 @@ test("loadCurrentGame falls back to a fresh session and saveCurrentGame writes t
 });
 ```
 
-- [ ] **Step 3: 运行测试并确认它们先失败**
+- [x] **Step 3: 运行测试并确认它们先失败**
 
 Run:
 
@@ -176,7 +176,7 @@ git commit -m "test(game): 补充本地存档失败用例"
 - Modify: `tests/game-engine.test.js`
 - Test: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 创建 `js/services/storage.js`**
+- [x] **Step 1: 创建 `js/services/storage.js`**
 
 新增 `js/services/storage.js`：
 
@@ -304,7 +304,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 2: 再补一个“读取不到 wx 时回退默认局面”的测试**
+- [x] **Step 2: 再补一个“读取不到 wx 时回退默认局面”的测试**
 
 在 `tests/game-engine.test.js` 的本地存档测试后追加：
 
@@ -319,7 +319,7 @@ test("loadCurrentGame returns the fallback session when storage API is missing",
 });
 ```
 
-- [ ] **Step 3: 运行测试并确认通过**
+- [x] **Step 3: 运行测试并确认通过**
 
 Run:
 
@@ -346,7 +346,7 @@ git commit -m "feat(game): 增加本地存档模块"
 - Modify: `js/main.js`
 - Test: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 在 `js/main.js` 中引入存档模块并用恢复结果初始化状态**
+- [x] **Step 1: 在 `js/main.js` 中引入存档模块并用恢复结果初始化状态**
 
 将 `js/main.js` 顶部 import 区域补成：
 
@@ -375,7 +375,7 @@ const { getTouchPoint } = require("./utils/touch");
   let noteMode = restoredSession.noteMode;
 ```
 
-- [ ] **Step 2: 在 `boot()` 中增加统一的保存函数**
+- [x] **Step 2: 在 `boot()` 中增加统一的保存函数**
 
 在 `toolbar` 初始化后追加：
 
@@ -389,7 +389,7 @@ const { getTouchPoint } = require("./utils/touch");
   }
 ```
 
-- [ ] **Step 3: 运行测试并确认逻辑护栏仍通过**
+- [x] **Step 3: 运行测试并确认逻辑护栏仍通过**
 
 Run:
 
@@ -416,7 +416,7 @@ git commit -m "feat(game): 接入继续游戏恢复"
 - Modify: `js/main.js`
 - Test: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 为选格、填数和笔记切换接入保存**
+- [x] **Step 1: 为选格、填数和笔记切换接入保存**
 
 将 `wx.onTouchStart` 中相关分支调整为：
 
@@ -449,7 +449,7 @@ git commit -m "feat(game): 接入继续游戏恢复"
       }
 ```
 
-- [ ] **Step 2: 为撤销和擦除接入保存**
+- [x] **Step 2: 为撤销和擦除接入保存**
 
 继续把 `tool` 分支补成：
 
@@ -480,7 +480,7 @@ git commit -m "feat(game): 接入继续游戏恢复"
     }
 ```
 
-- [ ] **Step 3: 运行测试并确认通过**
+- [x] **Step 3: 运行测试并确认通过**
 
 Run:
 
@@ -494,7 +494,7 @@ Expected:
 全部测试通过，0 fail
 ```
 
-- [ ] **Step 4: 在微信开发者工具中做继续游戏 smoke test**
+- [x] **Step 4: 在微信开发者工具中做继续游戏 smoke test**
 
 Manual checks:
 
@@ -514,6 +514,8 @@ Expected:
 继续游戏能力正常，恢复后的撤销链仍然可用
 ```
 
+当前状态：已完成。用户确认手工测试没有问题，继续游戏与恢复后撤销链表现正常。
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -528,7 +530,7 @@ git commit -m "feat(game): 保存最近对局进度"
 - Modify: `docs/superpowers/plans/2026-06-04-local-save-implementation.md`
 - Test: `tests/game-engine.test.js`
 
-- [ ] **Step 1: 在主实施计划中补充当前详细执行工件入口**
+- [x] **Step 1: 在主实施计划中补充当前详细执行工件入口**
 
 将 `docs/2026-06-04-jiuyu-current-implementation-plan.md` 的“当前详细执行工件”补成：
 
@@ -539,7 +541,7 @@ git commit -m "feat(game): 保存最近对局进度"
 - [小游戏迁移实施计划](./superpowers/plans/2026-06-04-minigame-migration-implementation.md)
 ```
 
-- [ ] **Step 2: 运行最终自动化验证**
+- [x] **Step 2: 运行最终自动化验证**
 
 Run:
 
@@ -553,7 +555,7 @@ Expected:
 全部测试通过，0 fail
 ```
 
-- [ ] **Step 3: 回写本计划的勾选状态与验证结果**
+- [x] **Step 3: 回写本计划的勾选状态与验证结果**
 
 将已完成步骤从 `- [ ]` 改为 `- [x]`，并保持手工验证步骤的结果描述与实际执行一致。
 
