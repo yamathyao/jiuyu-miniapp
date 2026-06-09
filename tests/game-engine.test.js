@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -24,8 +25,16 @@ const {
   loadCurrentGame,
   saveCurrentGame,
   loadSettings,
-  saveSettings
+  saveSettings,
+  loadStats,
+  saveStats
 } = require("../js/services/storage");
+const {
+  createCompletionSummary,
+  buildCompletionTags,
+  createEmptyStats,
+  applyCompletionToStats
+} = require("../js/services/stats-service");
 const {
   getDifficultyPolicy
 } = require("../js/services/difficulty-policy");
@@ -104,12 +113,15 @@ test("buildBoardView carries issue and hint target flags for scene rendering", f
   const changed = applyInputValue(game, 2, "4");
   const boardView = buildBoardView(changed, 2, {
     issueIndexes: [2, 11],
-    hintTargetIndex: 11
+    hintTargetIndex: 11,
+    hintRelatedIndexes: [0, 36]
   });
 
   assert.equal(boardView[2].issue, true);
   assert.equal(boardView[11].issue, true);
   assert.equal(boardView[11].hintTarget, true);
+  assert.equal(boardView[0].hintRelated, true);
+  assert.equal(boardView[36].hintRelated, true);
 });
 
 test("minigame entry files exist", function () {
@@ -339,6 +351,7 @@ test("checker returns localized messages", function () {
 
   assert.equal(runDifficultyCheck(wrong, "beginner", zh).message, "发现需要处理的填写。");
   assert.equal(runDifficultyCheck(wrong, "beginner", en).message, "There are entries that need attention.");
+  assert.equal(runDifficultyCheck(wrong, "intermediate", zh).message, "这里有几处填写可以再核对一下。");
 });
 
 test("getNextHint upgrades beginner hints up to the answer level", function () {
@@ -361,22 +374,52 @@ test("getNextHint upgrades beginner hints up to the answer level", function () {
   });
 
   assert.equal(firstHint.level, "direction");
+  assert.equal(firstHint.progress.current, 1);
+  assert.equal(firstHint.progress.total, 4);
   assert.equal(secondHint.level, "cell");
   assert.equal(thirdHint.level, "technique");
   assert.equal(fourthHint.level, "answer");
-  assert.equal(fourthHint.value, "4");
+  assert.equal(fourthHint.progress.current, 4);
+  assert.equal(fourthHint.progress.total, 4);
+  assert.equal(fourthHint.targetIndex, 40);
+  assert.equal(fourthHint.value, game.solution[40]);
+});
+
+test("getNextHint loops beginner hints back to the first level after the answer", function () {
+  const game = createGame(puzzles[0]);
+  const cycledHint = getNextHint(game, "beginner", {
+    currentLevel: "answer",
+    targetIndex: 40
+  });
+
+  assert.equal(cycledHint.level, "direction");
+  assert.equal(cycledHint.targetIndex, 40);
+});
+
+test("getNextHint prefers a real single-candidate cell over the first empty cell", function () {
+  const game = createGame(puzzles[0]);
+  const hint = getNextHint(game, "beginner", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+
+  assert.equal(hint.targetIndex, 40);
+  assert.equal(hint.value, "5");
 });
 
 test("getNextHint keeps expert hints at the technique level", function () {
-  const game = createGame(puzzles[0]);
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+  const game = createGame(expertPuzzle);
   const hint = getNextHint(game, "expert", {
     currentLevel: null,
     targetIndex: -1
   });
 
   assert.equal(hint.level, "technique");
-  assert.equal(hint.technique, "naked-single");
-  assert.equal(hint.value, "4");
+  assert.equal(hint.technique, "x-wing");
+  assert.equal(hint.value, game.solution[hint.targetIndex]);
 });
 
 test("getNextHint stops intermediate hints at the technique level", function () {
@@ -401,22 +444,144 @@ test("getNextHint stops intermediate hints at the technique level", function () 
   assert.equal(firstHint.level, "direction");
   assert.equal(secondHint.level, "cell");
   assert.equal(thirdHint.level, "technique");
-  assert.equal(fourthHint.level, "technique");
+  assert.equal(fourthHint.level, "direction");
 });
 
 test("hint engine returns localized messages", function () {
   const game = createGame(puzzles[0]);
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+  const skilledPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "skilled";
+  });
+  const expertGame = createGame(expertPuzzle);
+  const skilledGame = createGame(skilledPuzzle);
+  const boxLineSkilledGame = Object.assign({}, skilledGame, {
+    techniques: ["box-line-reduction"]
+  });
   const zh = createTranslator("zh-CN");
   const en = createTranslator("en");
 
   assert.equal(
     getNextHint(game, "beginner", { currentLevel: null, targetIndex: -1 }, zh).message,
-    "先看第一行前 3 格，这里有一个数字可以先确定。"
+    "先看第5行与第5宫的交界，这里有一个数字可以先确定。"
   );
   assert.equal(
     getNextHint(game, "beginner", { currentLevel: null, targetIndex: -1 }, en).message,
-    "Start with the first three cells in row 1. One value can already be fixed there."
+    "Start with row 5 around box 5. One value can already be fixed there."
   );
+  assert.equal(
+    getNextHint(game, "intermediate", { currentLevel: null, targetIndex: -1 }, zh).message,
+    "先从第5行与第5宫入手，这一段已经能继续推进，但先别急着直接落子。"
+  );
+  assert.equal(
+    getNextHint(game, "intermediate", { currentLevel: null, targetIndex: -1 }, en).message,
+    "Start with row 5 around box 5. This segment is ready to move, but hold the placement for a moment."
+  );
+  assert.equal(
+    getNextHint(game, "skilled", { currentLevel: null, targetIndex: -1 }, zh).message,
+    "先看第5行与第5宫的交界，只收这片范围，先别把视线放大。"
+  );
+  assert.equal(
+    getNextHint(expertGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
+    "Technique hint: X-Wing. Watch the linked row and column first."
+  );
+  assert.equal(
+    getNextHint(skilledGame, "skilled", {
+      currentLevel: "direction",
+      targetIndex: -1
+    }, en).message,
+    "Lean on the naked pair near R2C1 and keep the scan local before widening out."
+  );
+  assert.equal(
+    getNextHint(boxLineSkilledGame, "skilled", {
+      currentLevel: "direction",
+      targetIndex: -1
+    }, en).message,
+    "Use the box-line reduction around R1C1 and keep the scan tight to that band first."
+  );
+});
+
+test("expert technique hint wording changes with the tagged technique", function () {
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+  const expertGame = createGame(expertPuzzle);
+  const xyWingGame = Object.assign({}, expertGame, {
+    techniques: ["xy-wing"]
+  });
+  const en = createTranslator("en");
+
+  assert.equal(
+    getNextHint(expertGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
+    "Technique hint: X-Wing. Watch the linked row and column first."
+  );
+  assert.equal(
+    getNextHint(xyWingGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
+    "Technique hint: XY-Wing. Watch the linked pivots first."
+  );
+});
+
+test("skilled hint target selection can shift with the tagged technique", function () {
+  const skilledPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "skilled";
+  });
+  const baseGame = createGame(skilledPuzzle);
+  const nakedPairGame = Object.assign({}, baseGame, {
+    techniques: ["naked-pair"]
+  });
+  const boxLineGame = Object.assign({}, baseGame, {
+    techniques: ["box-line-reduction"]
+  });
+
+  const nakedPairHint = getNextHint(nakedPairGame, "skilled", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+  const boxLineHint = getNextHint(boxLineGame, "skilled", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+
+  assert.equal(nakedPairHint.targetIndex, 9);
+  assert.equal(boxLineHint.targetIndex, 0);
+});
+
+test("advanced hints can return related cell indexes for multi-cell highlighting", function () {
+  const skilledPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "skilled";
+  });
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+  const boxLineGame = Object.assign({}, createGame(skilledPuzzle), {
+    techniques: ["box-line-reduction"]
+  });
+  const xWingGame = Object.assign({}, createGame(expertPuzzle), {
+    techniques: ["x-wing"]
+  });
+  const xyWingGame = Object.assign({}, createGame(expertPuzzle), {
+    techniques: ["xy-wing"]
+  });
+
+  const boxLineHint = getNextHint(boxLineGame, "skilled", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+  const xWingHint = getNextHint(xWingGame, "expert", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+  const xyWingHint = getNextHint(xyWingGame, "expert", {
+    currentLevel: null,
+    targetIndex: -1
+  });
+
+  assert.deepEqual(boxLineHint.relatedIndexes, [9, 18]);
+  assert.deepEqual(xWingHint.relatedIndexes, [1, 2, 9, 18]);
+  assert.equal(xyWingHint.targetIndex, 55);
+  assert.deepEqual(xyWingHint.relatedIndexes, [56, 54]);
 });
 
 test("getThemeByDifficulty groups beginner and intermediate into a playful theme", function () {
@@ -502,11 +667,14 @@ test("home scene only exposes more difficulty options after the picker expands",
   const expandedMetrics = homeScene.getMetrics({
     difficultyPickerOpen: true
   });
+  const collapsedProbeY = collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight +
+    Math.floor((collapsedMetrics.settingsTop - (collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight)) / 2);
+  const expandedProbeY = expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20;
 
   assert.equal(
     homeScene.hitTest(
       collapsedMetrics.difficultyLeft + 20,
-      collapsedMetrics.difficultyTop + collapsedMetrics.difficultyHeight + collapsedMetrics.difficultyGap + 20,
+      collapsedProbeY,
       {
         hasSavedGame: true,
         selectedDifficulty: "beginner",
@@ -519,7 +687,7 @@ test("home scene only exposes more difficulty options after the picker expands",
   assert.deepEqual(
     homeScene.hitTest(
       expandedMetrics.difficultyLeft + 20,
-      expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20,
+      expandedProbeY,
       {
         hasSavedGame: true,
         selectedDifficulty: "beginner",
@@ -530,7 +698,7 @@ test("home scene only exposes more difficulty options after the picker expands",
   );
 });
 
-test("home scene uses loaded difficulty image assets when they are available", function () {
+test("home scene does not depend on difficulty image assets when they are available", function () {
   const drawCalls = [];
   const homeScene = createHomeScene({
     canvasWidth: 375,
@@ -567,7 +735,7 @@ test("home scene uses loaded difficulty image assets when they are available", f
     t: createTranslator("zh-CN")
   });
 
-  assert.ok(drawCalls.includes("beginner"));
+  assert.equal(drawCalls.includes("beginner"), false);
 });
 
 test("home scene does not use difficulty images while the picker list is expanded", function () {
@@ -707,6 +875,92 @@ test("home scene keeps settings as a dedicated entry instead of inline language 
   );
 });
 
+test("home scene exposes a hidden debug near-complete action when enabled", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics();
+
+  assert.deepEqual(
+    homeScene.hitTest(metrics.contentLeft + metrics.contentWidth / 2, metrics.brandTop, {
+      debugShortcutEnabled: true
+    }),
+    { type: "action", value: "debug-near-complete" }
+  );
+});
+
+test("home scene keeps a balanced vertical rhythm for the default layout", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    difficultyPickerOpen: false
+  });
+
+  assert.ok(metrics.primaryButtonTop > 230);
+  assert.ok(metrics.primaryButtonTop < 255);
+  assert.ok(metrics.difficultyTop - metrics.secondaryButtonTop < 110);
+  assert.ok(metrics.settingsTop - metrics.difficultyTop < 110);
+  assert.ok(metrics.footerTop - metrics.settingsTop < 80);
+});
+
+test("home scene can show a recent completion summary under the footer status", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const drawnTexts = [];
+
+  homeScene.draw({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    clearRect: function () {},
+    fillRect: function () {},
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    },
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {}
+  }, {
+    hasSavedGame: true,
+    selectedDifficulty: "expert",
+    recentSummary: "最近完成：专家 · 280s · 连续 2 天",
+    t: createTranslator("zh-CN")
+  });
+
+  assert.ok(drawnTexts.includes("最近完成：专家 · 280s · 连续 2 天"));
+});
+
+test("home scene keeps visual spec fields available for difficulty-based styling", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const playfulSpec = homeScene.getVisualSpec({
+    selectedDifficulty: "beginner"
+  });
+  const proSpec = homeScene.getVisualSpec({
+    selectedDifficulty: "expert"
+  });
+
+  assert.equal(playfulSpec.tone, "playful");
+  assert.equal(proSpec.tone, "pro");
+  assert.equal(typeof playfulSpec.ornament, "string");
+  assert.equal(typeof proSpec.helperFill, "string");
+  assert.equal(typeof playfulSpec.accentInnerFill, "string");
+  assert.equal(typeof proSpec.brandFrameFill, "string");
+});
+
 test("board scene exposes a settings button hit area in the header", function () {
   const boardScene = createBoardScene({
     canvasWidth: 375,
@@ -733,7 +987,276 @@ test("board scene keeps the settings action on the centered plaque area", functi
   );
 });
 
-test("settings scene exposes back and language actions", function () {
+test("board scene exposes layered completion actions by difficulty", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+
+  const beginnerActions = boardScene.getCompletionActions({
+    difficulty: "beginner"
+  });
+  const expertActions = boardScene.getCompletionActions({
+    difficulty: "expert"
+  });
+
+  assert.deepEqual(beginnerActions, ["new-game", "home"]);
+  assert.deepEqual(expertActions, ["new-game", "home", "stats"]);
+});
+
+test("board scene wraps long feedback messages into multiple lines", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const feedbackDraws = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text, x, y) {
+      if (String(text).indexOf("提示") >= 0 || String(text).indexOf("需要") >= 0) {
+        feedbackDraws.push({ text: text, x: x, y: y });
+      }
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "提示文案需要在这里自动换行，避免一整句被挤在同一行里影响阅读，也让较长的策略提示、技巧提示和答案提示在窄屏设备上保持清晰稳定。",
+    feedbackType: "info",
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(feedbackDraws.length >= 2);
+});
+
+test("board scene shows hint progress inside the feedback panel", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const drawnTexts = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "先看这一片区域。",
+    feedbackType: "info",
+    hintProgress: {
+      current: 2,
+      total: 4
+    },
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(drawnTexts.includes("2/4"));
+});
+
+test("board scene stats overlay shows completion count and average hints for the active difficulty", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const drawnTexts = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "",
+    feedbackType: "info",
+    hintProgress: null,
+    completionSummary: {
+      difficulty: "expert"
+    },
+    completionVisible: false,
+    statsOverlayVisible: true,
+    statsSnapshot: {
+      totalCompleted: 6,
+      bestTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 280
+      },
+      averageTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 360
+      },
+      completionCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 3
+      },
+      hintCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 6
+      }
+    },
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "专家",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(drawnTexts.includes("当前难度完成 3"));
+  assert.ok(drawnTexts.includes("当前难度平均提示 2"));
+});
+
+test("board scene stats overlay shows current and best streak values", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const drawnTexts = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "",
+    feedbackType: "info",
+    hintProgress: null,
+    completionSummary: {
+      difficulty: "expert"
+    },
+    completionVisible: false,
+    statsOverlayVisible: true,
+    statsSnapshot: {
+      totalCompleted: 6,
+      currentStreakDays: 2,
+      bestStreakDays: 5,
+      bestTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 280
+      },
+      averageTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 360
+      },
+      completionCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 3
+      },
+      hintCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 6
+      }
+    },
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "专家",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(drawnTexts.includes("当前连续 2 天"));
+  assert.ok(drawnTexts.includes("最佳连续 5 天"));
+});
+
+test("settings scene exposes back, language toggle, and restart actions", function () {
   const settingsScene = createSettingsScene({
     canvasWidth: 375,
     canvasHeight: 812
@@ -745,8 +1268,14 @@ test("settings scene exposes back and language actions", function () {
     { type: "action", value: "back" }
   );
   assert.deepEqual(
-    settingsScene.hitTest(metrics.languageCardLeft + 8, metrics.languageCardTop + 8),
-    { type: "action", value: "language" }
+    settingsScene.hitTest(metrics.languageCardLeft + 8, metrics.languageCardTop + 8, {
+      languagePickerOpen: false
+    }),
+    { type: "action", value: "toggle-language-picker" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.contentLeft + 8, metrics.restartCardTop + 8),
+    { type: "action", value: "restart-game" }
   );
 });
 
@@ -758,12 +1287,20 @@ test("settings scene keeps the language action on the centered main card", funct
   const metrics = settingsScene.getMetrics();
 
   assert.deepEqual(
-    settingsScene.hitTest(metrics.languageCardLeft + metrics.languageCardWidth / 2, metrics.languageCardTop + metrics.languageCardHeight / 2),
-    { type: "action", value: "language" }
+    settingsScene.hitTest(
+      metrics.languageCardLeft + metrics.languageCardWidth / 2,
+      metrics.languageCardTop + metrics.languageCardHeight / 2,
+      { languagePickerOpen: false }
+    ),
+    { type: "action", value: "toggle-language-picker" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.contentLeft + metrics.contentWidth / 2, metrics.restartCardTop + metrics.restartCardHeight / 2),
+    { type: "action", value: "restart-game" }
   );
 });
 
-test("language scene exposes back and locale actions", function () {
+test("language scene exposes compact language options", function () {
   const languageScene = createLanguageScene({
     canvasWidth: 375,
     canvasHeight: 812
@@ -771,33 +1308,59 @@ test("language scene exposes back and locale actions", function () {
   const metrics = languageScene.getMetrics();
 
   assert.deepEqual(
-    languageScene.hitTest(metrics.backLeft + 8, metrics.backTop + 8),
-    { type: "action", value: "back" }
-  );
-  assert.deepEqual(
-    languageScene.hitTest(metrics.optionLeft + 8, metrics.optionTop + 8),
+    languageScene.hitTest(metrics.optionLeft + 20, metrics.optionTop + 20),
     { type: "language", value: "zh-CN" }
   );
   assert.deepEqual(
-    languageScene.hitTest(metrics.optionLeft + 8, metrics.optionTop + metrics.optionGap + metrics.optionHeight + 8),
+    languageScene.hitTest(
+      metrics.optionLeft + 20,
+      metrics.optionTop + metrics.optionHeight + metrics.optionGap + 20
+    ),
     { type: "language", value: "en" }
   );
+  assert.equal(metrics.optionWidth < metrics.contentWidth, true);
 });
 
-test("language scene keeps the locale actions on the centered option cards", function () {
-  const languageScene = createLanguageScene({
+test("settings scene exposes four difficulty actions inside the page", function () {
+  const settingsScene = createSettingsScene({
     canvasWidth: 375,
     canvasHeight: 812
   });
-  const metrics = languageScene.getMetrics();
+  const metrics = settingsScene.getMetrics();
 
   assert.deepEqual(
-    languageScene.hitTest(metrics.optionLeft + metrics.optionWidth / 2, metrics.optionTop + metrics.optionHeight / 2),
-    { type: "language", value: "zh-CN" }
+    settingsScene.hitTest(metrics.difficultyCardLeft + 10, metrics.difficultyCardTop + 10),
+    { type: "difficulty", value: "beginner" }
   );
   assert.deepEqual(
-    languageScene.hitTest(metrics.optionLeft + metrics.optionWidth / 2, metrics.optionTop + metrics.optionHeight + metrics.optionGap + metrics.optionHeight / 2),
-    { type: "language", value: "en" }
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap + 10,
+      metrics.difficultyCardTop + 10
+    ),
+    { type: "difficulty", value: "intermediate" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.difficultyCardLeft + 10, metrics.difficultySecondRowTop + 10),
+    { type: "difficulty", value: "skilled" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap + 10,
+      metrics.difficultySecondRowTop + 10
+    ),
+    { type: "difficulty", value: "expert" }
+  );
+});
+
+test("settings scene keeps the ink-paper palette for pro difficulties", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+
+  assert.equal(
+    settingsScene.getVisualSpec({ selectedDifficulty: "expert" }).background,
+    "#f2f1ea"
   );
 });
 
@@ -834,10 +1397,153 @@ test("saveSettings persists preferred difficulty and language", function () {
   assert.equal(writes[0][1].language, "en");
 });
 
-test("puzzle data contains all four supported difficulties", function () {
-  const difficulties = puzzles.map(function (puzzle) {
-    return puzzle.difficulty;
+test("createCompletionSummary builds layered completion data", function () {
+  const zh = createTranslator("zh-CN");
+  const summary = createCompletionSummary({
+    difficulty: "expert",
+    elapsedSeconds: 428,
+    hintCount: 0,
+    checkCount: 0,
+    mistakeCount: 0,
+    completedAt: "2026-06-09T10:00:00.000Z",
+    t: zh
   });
+
+  assert.equal(summary.difficulty, "expert");
+  assert.equal(summary.elapsedSeconds, 428);
+  assert.equal(summary.title, "已完成本局");
+  assert.equal(summary.encouragement, "这是一局很克制的完成。");
+  assert.deepEqual(summary.resultTags, ["零提示", "零错误", "一次完成"]);
+});
+
+test("buildCompletionTags can omit one-shot badge when checks already happened", function () {
+  const tags = buildCompletionTags({
+    hintCount: 0,
+    checkCount: 2,
+    mistakeCount: 0
+  });
+
+  assert.deepEqual(tags, ["零提示", "零错误"]);
+});
+
+test("applyCompletionToStats updates totals and best time by difficulty", function () {
+  const summary = createCompletionSummary({
+    difficulty: "skilled",
+    elapsedSeconds: 380,
+    hintCount: 1,
+    checkCount: 3,
+    mistakeCount: 1,
+    completedAt: "2026-06-09T10:00:00.000Z"
+  });
+  const nextStats = applyCompletionToStats(createEmptyStats(), summary);
+
+  assert.equal(nextStats.totalCompleted, 1);
+  assert.equal(nextStats.lastCompletedAt, "2026-06-09T10:00:00.000Z");
+  assert.equal(nextStats.bestTimeByDifficulty.skilled, 380);
+  assert.equal(nextStats.averageTimeByDifficulty.skilled, 380);
+  assert.equal(nextStats.completionCountByDifficulty.skilled, 1);
+  assert.equal(nextStats.hintCountByDifficulty.skilled, 1);
+  assert.equal(nextStats.currentStreakDays, 1);
+  assert.equal(nextStats.bestStreakDays, 1);
+  assert.equal(nextStats.lastCompletedDifficulty, "skilled");
+  assert.equal(nextStats.lastElapsedSeconds, 380);
+});
+
+test("applyCompletionToStats extends or resets streaks based on completion date", function () {
+  const baseStats = Object.assign(createEmptyStats(), {
+    totalCompleted: 3,
+    lastCompletedAt: "2026-06-08T10:00:00.000Z",
+    currentStreakDays: 2,
+    bestStreakDays: 2
+  });
+  const continued = applyCompletionToStats(baseStats, createCompletionSummary({
+    difficulty: "expert",
+    elapsedSeconds: 300,
+    hintCount: 1,
+    checkCount: 0,
+    mistakeCount: 0,
+    completedAt: "2026-06-09T08:00:00.000Z"
+  }));
+  const reset = applyCompletionToStats(baseStats, createCompletionSummary({
+    difficulty: "expert",
+    elapsedSeconds: 300,
+    hintCount: 1,
+    checkCount: 0,
+    mistakeCount: 0,
+    completedAt: "2026-06-11T08:00:00.000Z"
+  }));
+
+  assert.equal(continued.currentStreakDays, 3);
+  assert.equal(continued.bestStreakDays, 3);
+  assert.equal(reset.currentStreakDays, 1);
+  assert.equal(reset.bestStreakDays, 2);
+});
+
+test("loadStats falls back to an empty stats snapshot and saveStats persists it", function () {
+  const writes = [];
+  const loaded = loadStats({
+    getStorageSync: function () {
+      return "";
+    }
+  });
+  const saved = saveStats(loaded, {
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    }
+  });
+
+  assert.equal(loaded.totalCompleted, 0);
+  assert.equal(saved, true);
+  assert.equal(writes[0][0], STORAGE_KEYS.stats);
+});
+
+test("loadStats backfills newer stat fields for older saved snapshots", function () {
+  const loaded = loadStats({
+    getStorageSync: function () {
+      return {
+        totalCompleted: 3,
+        lastCompletedAt: "2026-06-09T10:00:00.000Z",
+        bestTimeByDifficulty: {
+          beginner: 120,
+          intermediate: 0,
+          skilled: 0,
+          expert: 0
+        },
+        averageTimeByDifficulty: {
+          beginner: 180,
+          intermediate: 0,
+          skilled: 0,
+          expert: 0
+        },
+        completionCountByDifficulty: {
+          beginner: 3,
+          intermediate: 0,
+          skilled: 0,
+          expert: 0
+        },
+        totalTimeByDifficulty: {
+          beginner: 540,
+          intermediate: 0,
+          skilled: 0,
+          expert: 0
+        }
+      };
+    }
+  });
+
+  assert.equal(loaded.totalCompleted, 3);
+  assert.equal(loaded.bestTimeByDifficulty.beginner, 120);
+  assert.equal(loaded.hintCountByDifficulty.beginner, 0);
+});
+
+test("puzzle data contains all four supported difficulties", function () {
+  const difficulties = Array.from(new Set(puzzles.map(function (puzzle) {
+    return puzzle.difficulty;
+  })));
+  const countsByDifficulty = puzzles.reduce(function (counts, puzzle) {
+    counts[puzzle.difficulty] = (counts[puzzle.difficulty] || 0) + 1;
+    return counts;
+  }, {});
 
   assert.deepEqual(difficulties, [
     "beginner",
@@ -845,6 +1551,108 @@ test("puzzle data contains all four supported difficulties", function () {
     "skilled",
     "expert"
   ]);
+  assert.ok(countsByDifficulty.beginner >= 10);
+  assert.ok(countsByDifficulty.intermediate >= 10);
+  assert.ok(countsByDifficulty.skilled >= 10);
+  assert.ok(countsByDifficulty.expert >= 10);
+});
+
+test("puzzle validation script accepts the current puzzle bank", function () {
+  const result = childProcess.spawnSync("node", ["scripts/validate-puzzles.js"], {
+    cwd: path.join(__dirname, ".."),
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Puzzle validation passed/);
+});
+
+test("puzzle summary script reports counts and givens by difficulty", function () {
+  const result = childProcess.spawnSync("node", ["scripts/summarize-puzzles.js"], {
+    cwd: path.join(__dirname, ".."),
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /beginner: count=10/);
+  assert.match(result.stdout, /intermediate: count=10/);
+  assert.match(result.stdout, /skilled: count=10/);
+  assert.match(result.stdout, /expert: count=10/);
+  assert.match(result.stdout, /givens=/);
+});
+
+test("harder difficulties start with fewer given cells than easier ones", function () {
+  function countGivens(difficulty) {
+    const puzzle = puzzles.find(function (item) {
+      return item.difficulty === difficulty;
+    });
+
+    return puzzle.puzzle.split("").filter(function (value) {
+      return value !== "0";
+    }).length;
+  }
+
+  const beginnerGivens = countGivens("beginner");
+  const intermediateGivens = countGivens("intermediate");
+  const skilledGivens = countGivens("skilled");
+  const expertGivens = countGivens("expert");
+
+  assert.ok(beginnerGivens >= intermediateGivens);
+  assert.ok(intermediateGivens >= skilledGivens);
+  assert.ok(skilledGivens >= expertGivens);
+});
+
+test("skilled and expert puzzle banks keep a tighter givens range", function () {
+  function getRange(difficulty) {
+    const givens = puzzles
+      .filter(function (puzzle) {
+        return puzzle.difficulty === difficulty;
+      })
+      .map(function (puzzle) {
+        return puzzle.puzzle.split("").filter(function (value) {
+          return value !== "0";
+        }).length;
+      });
+
+    return {
+      min: Math.min.apply(null, givens),
+      max: Math.max.apply(null, givens)
+    };
+  }
+
+  const skilledRange = getRange("skilled");
+  const expertRange = getRange("expert");
+
+  assert.ok(skilledRange.min >= 21);
+  assert.ok(skilledRange.max <= 28);
+  assert.ok(expertRange.min >= 14);
+  assert.ok(expertRange.max <= 20);
+});
+
+test("skilled and expert puzzle metadata stays aligned with their intended technique bands", function () {
+  const skilledPuzzles = puzzles.filter(function (puzzle) {
+    return puzzle.difficulty === "skilled";
+  });
+  const expertPuzzles = puzzles.filter(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+
+  skilledPuzzles.forEach(function (puzzle) {
+    assert.ok(puzzle.techniques.includes("naked-pair"));
+    assert.ok(
+      puzzle.techniques.includes("pointing-pair") ||
+      puzzle.techniques.includes("box-line-reduction")
+    );
+  });
+
+  expertPuzzles.forEach(function (puzzle) {
+    assert.ok(puzzle.techniques.includes("x-wing"));
+    assert.ok(!puzzle.techniques.includes("swordfish"));
+    assert.ok(
+      puzzle.techniques.includes("box-line-reduction") ||
+      puzzle.techniques.includes("xy-wing")
+    );
+  });
 });
 
 test("main entry boots into the home screen using the stored language", function () {
@@ -911,7 +1719,7 @@ test("main entry boots into the home screen using the stored language", function
   }
 });
 
-test("main entry can open settings from home and switch language on the dedicated language page", function () {
+test("main entry can open settings from home and switch language inline", function () {
   const texts = [];
   const writes = [];
   const originalWx = global.wx;
@@ -985,11 +1793,10 @@ test("main entry can open settings from home and switch language on the dedicate
       canvasHeight: 812
     });
     const settingsMetrics = settingsScene.getMetrics();
-    const languageScene = createLanguageScene({
+    const languageMetrics = createLanguageScene({
       canvasWidth: 375,
       canvasHeight: 812
-    });
-    const languageMetrics = languageScene.getMetrics();
+    }).getMetrics();
 
     touchHandler({
       touches: [
@@ -1016,9 +1823,12 @@ test("main entry can open settings from home and switch language on the dedicate
       ]
     });
 
-    assert.ok(texts.includes("Language"));
-    assert.equal(writes[writes.length - 1][0], STORAGE_KEYS.settings);
-    assert.equal(writes[writes.length - 1][1].language, "en");
+    assert.ok(texts.includes("设置"));
+    const savedSettings = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings;
+    }).pop();
+    assert.ok(savedSettings);
+    assert.equal(savedSettings[1].language, "en");
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -1117,6 +1927,492 @@ test("main entry can open settings from board and return without leaving the gam
   }
 });
 
+test("main entry can restart a game from settings and return to board", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "expert",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [
+        {
+          clientX: 180,
+          clientY: 286
+        }
+      ]
+    });
+    touchHandler({
+      touches: [
+        {
+          clientX: 320,
+          clientY: 48
+        }
+      ]
+    });
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.contentLeft + 20,
+        clientY: settingsMetrics.restartCardTop + 20
+      }]
+    });
+
+    const restartedGame = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame &&
+        entry[1] &&
+        entry[1].game &&
+        entry[1].game.difficulty === "expert" &&
+        entry[1].selectedIndex === -1 &&
+        entry[1].noteMode === false;
+    });
+
+    assert.ok(restartedGame);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry can change preferred difficulty directly inside settings", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.contentLeft + 20,
+        clientY: homeMetrics.settingsTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + settingsMetrics.difficultyCardWidth + settingsMetrics.difficultyCardGap + 20,
+        clientY: settingsMetrics.difficultySecondRowTop + 20
+      }]
+    });
+
+    assert.equal(writes[writes.length - 1][0], STORAGE_KEYS.settings);
+    assert.equal(writes[writes.length - 1][1].preferredDifficulty, "expert");
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry switches the active game when changing difficulty inside settings", function () {
+  const writes = [];
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(text);
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.contentLeft + 20,
+        clientY: homeMetrics.settingsTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + settingsMetrics.difficultyCardWidth + settingsMetrics.difficultyCardGap + 20,
+        clientY: settingsMetrics.difficultySecondRowTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.backLeft + 12,
+        clientY: settingsMetrics.backTop + 12
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    const savedExpertGame = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame &&
+        entry[1] &&
+        entry[1].game &&
+        entry[1].game.difficulty === "expert";
+    });
+    const savedExpertSettings = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings &&
+        entry[1] &&
+        entry[1].preferredDifficulty === "expert";
+    });
+
+    assert.ok(savedExpertGame);
+    assert.ok(savedExpertSettings);
+    assert.ok(texts.includes("专家"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry shows completion card and writes stats when a game is completed", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+  const nearCompleteSession = {
+    game: {
+      puzzleId: expertPuzzle.id,
+      difficulty: expertPuzzle.difficulty,
+      puzzle: expertPuzzle.puzzle,
+      solution: expertPuzzle.solution,
+      cells: expertPuzzle.solution.split("").map(function (value, index) {
+        const isMissing = index === 2;
+        const isGiven = expertPuzzle.puzzle[index] !== "0";
+        return {
+          index: index,
+          value: isMissing ? "" : value,
+          given: isGiven,
+          notes: []
+        };
+      }),
+      elapsedSeconds: 428,
+      mistakes: 0,
+      hintsUsed: 0,
+      history: []
+    },
+    selectedIndex: -1,
+    noteMode: false
+  };
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(text);
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "expert",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.currentGame) {
+        return nearCompleteSession;
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const toolbar = createToolbar({
+      canvasWidth: 375,
+      canvasHeight: 812,
+      boardMetrics: boardScene.getMetrics()
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const toolbarMetrics = toolbar.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.boardLeft + boardMetrics.cellSize * 2.5,
+        clientY: boardMetrics.boardTop + boardMetrics.cellSize * 0.5
+      }]
+    });
+
+    const expectedCompletionValue = Number(expertPuzzle.solution[2]);
+
+    touchHandler({
+      touches: [{
+        clientX: toolbarMetrics.left + (toolbarMetrics.width / 9) * (expectedCompletionValue - 0.5),
+        clientY: toolbarMetrics.top + toolbarMetrics.numberHeight / 2
+      }]
+    });
+
+    assert.ok(texts.includes("已完成本局"));
+    assert.ok(texts.includes("查看统计"));
+
+    const savedStats = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.stats;
+    });
+
+    assert.ok(savedStats);
+    assert.equal(savedStats[1].hintCountByDifficulty.expert, 0);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
 test("board scene leaves more top breathing room for the new header", function () {
   const boardScene = createBoardScene({
     canvasWidth: 375,
@@ -1141,8 +2437,10 @@ test("theme policy exposes grouped visual tokens for playful and pro modes", fun
 
   assert.equal(typeof playful.surfaceTint, "string");
   assert.equal(typeof playful.ornament, "string");
+  assert.equal(typeof playful.hintRelated, "string");
   assert.equal(typeof pro.surfaceTint, "string");
   assert.equal(typeof pro.ornament, "string");
+  assert.equal(typeof pro.hintRelated, "string");
 });
 
 test("home scene exposes a playful visual spec for beginner difficulty", function () {
@@ -1160,6 +2458,7 @@ test("home scene exposes a playful visual spec for beginner difficulty", functio
   assert.equal(visualSpec.primaryLabel, "继续游戏");
   assert.equal(visualSpec.settingsLabel, "设置");
   assert.equal(typeof visualSpec.decorTone, "string");
+  assert.equal(typeof visualSpec.badgeInnerFill, "string");
 });
 
 test("home scene exposes a pro visual spec for expert difficulty", function () {
@@ -1173,10 +2472,69 @@ test("home scene exposes a pro visual spec for expert difficulty", function () {
   });
 
   assert.equal(visualSpec.tone, "pro");
-  assert.equal(visualSpec.brandSubtitle, "Enter a focused solving rhythm.");
+  assert.equal(visualSpec.brandSubtitle, "Find a focused solving rhythm.");
   assert.equal(visualSpec.primaryLabel, "Continue");
   assert.equal(visualSpec.settingsLabel, "Settings");
   assert.equal(typeof visualSpec.decorTone, "string");
+  assert.equal(typeof visualSpec.secondaryInnerFill, "string");
+});
+
+test("home scene keeps the same brand title font across playful and pro difficulties", function () {
+  const fontCalls = [];
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const context = {
+    _font: "",
+    fillStyle: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    arcTo: function () {},
+    closePath: function () {},
+    fillRect: function () {},
+    fill: function () {},
+    stroke: function () {},
+    measureText: function (text) {
+      return { width: String(text || "").length * 8 };
+    },
+    fillText: function (text) {
+      if (text === "方庭九屿") {
+        fontCalls.push(this.font);
+      }
+    }
+  };
+
+  Object.defineProperty(context, "font", {
+    get: function () {
+      return this._font;
+    },
+    set: function (value) {
+      this._font = value;
+    }
+  });
+
+  homeScene.draw(context, {
+    hasSavedGame: false,
+    selectedDifficulty: "beginner",
+    difficultyPickerOpen: false,
+    t: createTranslator("zh-CN")
+  });
+  homeScene.draw(context, {
+    hasSavedGame: false,
+    selectedDifficulty: "skilled",
+    difficultyPickerOpen: false,
+    t: createTranslator("zh-CN")
+  });
+
+  assert.deepEqual(fontCalls, [
+    "bold 36px sans-serif",
+    "bold 36px sans-serif"
+  ]);
 });
 
 test("normalizeLocale falls back to zh-CN for unsupported languages", function () {
@@ -1192,9 +2550,21 @@ test("createTranslator returns translated difficulty labels and interpolated cop
   assert.equal(zh("difficulty.beginner"), "新手");
   assert.equal(en("difficulty.beginner"), "Beginner");
   assert.equal(
+    zh("settings.difficultyChanged", {
+      difficulty: zh("difficulty.expert")
+    }),
+    "已切换到专家难度，并开始新棋局。"
+  );
+  assert.equal(
     en("home.currentDifficulty", {
       difficulty: en("difficulty.expert")
     }),
     "Current difficulty: Expert"
+  );
+  assert.equal(
+    en("settings.difficultyChanged", {
+      difficulty: en("difficulty.expert")
+    }),
+    "Switched to Expert and started a new game."
   );
 });

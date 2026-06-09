@@ -1,6 +1,9 @@
+const { createEmptyStats } = require("./stats-service");
+
 const STORAGE_KEYS = {
   currentGame: "jiuyu.currentGame",
-  settings: "jiuyu.settings"
+  settings: "jiuyu.settings",
+  stats: "jiuyu.stats"
 };
 
 function getStorageApi(storageApi) {
@@ -134,6 +137,57 @@ function saveSettings(settings, storageApi) {
   return writeStorage(STORAGE_KEYS.settings, settings, storageApi);
 }
 
+function isValidStats(stats) {
+  return Boolean(stats) &&
+    typeof stats.totalCompleted === "number" &&
+    typeof stats.lastCompletedAt === "string" &&
+    Boolean(stats.bestTimeByDifficulty) &&
+    Boolean(stats.averageTimeByDifficulty) &&
+    Boolean(stats.completionCountByDifficulty) &&
+    Boolean(stats.totalTimeByDifficulty);
+}
+
+function loadStats(storageApi) {
+  const savedStats = readStorage(STORAGE_KEYS.stats, null, storageApi);
+  const emptyStats = createEmptyStats();
+
+  if (!isValidStats(savedStats)) {
+    return emptyStats;
+  }
+
+  return Object.assign(emptyStats, savedStats, {
+    bestTimeByDifficulty: Object.assign(
+      {},
+      emptyStats.bestTimeByDifficulty,
+      savedStats.bestTimeByDifficulty || {}
+    ),
+    averageTimeByDifficulty: Object.assign(
+      {},
+      emptyStats.averageTimeByDifficulty,
+      savedStats.averageTimeByDifficulty || {}
+    ),
+    completionCountByDifficulty: Object.assign(
+      {},
+      emptyStats.completionCountByDifficulty,
+      savedStats.completionCountByDifficulty || {}
+    ),
+    hintCountByDifficulty: Object.assign(
+      {},
+      emptyStats.hintCountByDifficulty,
+      savedStats.hintCountByDifficulty || {}
+    ),
+    totalTimeByDifficulty: Object.assign(
+      {},
+      emptyStats.totalTimeByDifficulty,
+      savedStats.totalTimeByDifficulty || {}
+    )
+  });
+}
+
+function saveStats(stats, storageApi) {
+  return writeStorage(STORAGE_KEYS.stats, stats, storageApi);
+}
+
 module.exports = {
   STORAGE_KEYS,
   readStorage,
@@ -141,5 +195,7 @@ module.exports = {
   loadCurrentGame,
   saveCurrentGame,
   loadSettings,
-  saveSettings
+  saveSettings,
+  loadStats,
+  saveStats
 };

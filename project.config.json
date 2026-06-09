@@ -1,7 +1,24 @@
 {
   "description": "九屿数独微信小程序",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "docs"
+      },
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": ".superpowers"
+      },
+      {
+        "type": "suffix",
+        "value": ".original.png"
+      }
+    ],
     "include": []
   },
   "setting": {

@@ -1,8 +1,89 @@
+const {
+  drawRoundedRectPath,
+  drawPlaque
+} = require("../ui/panel-primitives");
+
+function isAdvancedDifficulty(difficulty) {
+  return difficulty === "skilled" || difficulty === "expert";
+}
+
+function getFontSize(font) {
+  const match = /(\d+)px/.exec(font || "");
+  return match ? Number(match[1]) : 15;
+}
+
+function measureTextWidth(context, text) {
+  if (context && typeof context.measureText === "function") {
+    return context.measureText(text).width;
+  }
+
+  return String(text || "").length * getFontSize(context && context.font) * 0.56;
+}
+
+function getWrappedLines(context, text, maxWidth, maxLines) {
+  const source = String(text || "");
+  const units = source.indexOf(" ") >= 0 ? source.split(" ") : source.split("");
+  const lines = [];
+  let currentLine = "";
+
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index];
+    const nextLine = currentLine
+      ? (source.indexOf(" ") >= 0 ? currentLine + " " + unit : currentLine + unit)
+      : unit;
+
+    if (measureTextWidth(context, nextLine) <= maxWidth || !currentLine) {
+      currentLine = nextLine;
+      continue;
+    }
+
+    lines.push(currentLine);
+    currentLine = unit;
+
+    if (maxLines && lines.length === maxLines - 1) {
+      break;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return maxLines ? lines.slice(0, maxLines) : lines;
+}
+
+function drawWrappedText(context, text, left, top, maxWidth, lineHeight, maxLines) {
+  getWrappedLines(context, text, maxWidth, maxLines).forEach(function (line, lineIndex) {
+    context.fillText(line, left, top + lineHeight * lineIndex);
+  });
+}
+
+function drawOverlayButton(context, left, top, width, height, label, theme) {
+  context.fillStyle = theme.boardBase || "#ffffff";
+  drawRoundedRectPath(context, left, top, width, height, 16);
+  if (typeof context.fill === "function") {
+    context.fill();
+  }
+
+  context.lineWidth = 1;
+  context.strokeStyle = theme.buttonShadow || "#c98b6f";
+  drawRoundedRectPath(context, left, top, width, height, 16);
+  if (typeof context.stroke === "function") {
+    context.stroke();
+  }
+
+  context.fillStyle = theme.toolText || "#1f2933";
+  context.font = "14px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, left + width / 2, top + height / 2 + 1);
+}
+
 function createBoardScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
   const horizontalPadding = options.horizontalPadding || Math.max(16, Math.floor(canvasWidth * 0.04));
-  const topPadding = options.topPadding || Math.max(148, Math.floor(canvasHeight * 0.18));
+  const topPadding = options.topPadding || Math.max(186, Math.floor(canvasHeight * 0.225));
   const maxBoardSize = Math.min(
     canvasWidth - horizontalPadding * 2,
     canvasHeight * 0.62
@@ -13,6 +94,11 @@ function createBoardScene(options) {
     : Math.floor((canvasWidth - boardSize) / 2);
   const boardTop = options.boardTop != null ? options.boardTop : topPadding;
   const cellSize = boardSize / 9;
+  const headerPanelTop = 50;
+  const headerPanelHeight = 100;
+  const titleTop = 94;
+  const difficultyTop = 120;
+  const settingsTop = 74;
 
   function getMetrics() {
     return {
@@ -22,11 +108,27 @@ function createBoardScene(options) {
       boardLeft: boardLeft,
       boardSize: boardSize,
       cellSize: cellSize,
+      headerPanelTop: headerPanelTop,
+      headerPanelHeight: headerPanelHeight,
       settingsLeft: boardLeft + boardSize - 84,
-      settingsTop: boardTop - 112,
+      settingsTop: settingsTop,
       settingsWidth: 84,
-      settingsHeight: 34
+      settingsHeight: 34,
+      completionCardLeft: boardLeft + 14,
+      completionCardTop: boardTop + 48,
+      completionCardWidth: boardSize - 28,
+      completionCardHeight: 368,
+      statsCardLeft: boardLeft + 20,
+      statsCardTop: boardTop + 64,
+      statsCardWidth: boardSize - 40,
+      statsCardHeight: 318
     };
+  }
+
+  function getCompletionActions(summary) {
+    return isAdvancedDifficulty(summary.difficulty)
+      ? ["new-game", "home", "stats"]
+      : ["new-game", "home"];
   }
 
   function getCellIndexByPoint(x, y) {
@@ -44,94 +146,27 @@ function createBoardScene(options) {
     return row * 9 + column;
   }
 
-  function drawRoundedRectPath(context, left, top, width, height, radius) {
-    if (typeof context.arcTo !== "function") {
-      context.beginPath();
-      context.moveTo(left, top);
-      context.lineTo(left + width, top);
-      context.lineTo(left + width, top + height);
-      context.lineTo(left, top + height);
-      context.lineTo(left, top);
-      if (typeof context.closePath === "function") {
-        context.closePath();
-      }
-      return;
-    }
-
-    const right = left + width;
-    const bottom = top + height;
-    const safeRadius = Math.min(radius, width / 2, height / 2);
-
-    context.beginPath();
-    context.moveTo(left + safeRadius, top);
-    context.lineTo(right - safeRadius, top);
-    context.arcTo(right, top, right, top + safeRadius, safeRadius);
-    context.lineTo(right, bottom - safeRadius);
-    context.arcTo(right, bottom, right - safeRadius, bottom, safeRadius);
-    context.lineTo(left + safeRadius, bottom);
-    context.arcTo(left, bottom, left, bottom - safeRadius, safeRadius);
-    context.lineTo(left, top + safeRadius);
-    context.arcTo(left, top, left + safeRadius, top, safeRadius);
-    if (typeof context.closePath === "function") {
-      context.closePath();
-    }
-  }
-
-  function drawPlaque(context, left, top, width, height, label, theme) {
-    context.fillStyle = theme.surfaceTint || "#fff7eb";
-    drawRoundedRectPath(context, left, top, width, height, 18);
-    if (typeof context.fill === "function") {
-      context.fill();
-    }
-
-    context.lineWidth = 1;
-    context.strokeStyle = theme.buttonShadow || "#c98b6f";
-    drawRoundedRectPath(context, left, top, width, height, 18);
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
-    context.lineWidth = 1;
-    context.strokeStyle = theme.ornament || "#d9a65a";
-    context.beginPath();
-    context.moveTo(left + 14, top + height / 2);
-    context.lineTo(left + 24, top + height / 2);
-    context.moveTo(left + width - 24, top + height / 2);
-    context.lineTo(left + width - 14, top + height / 2);
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
-    context.fillStyle = theme.toolText || "#1f2933";
-    context.font = "15px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(label, left + width / 2, top + height / 2);
-  }
-
   function drawHeader(context, renderState, theme, metrics) {
     const title = renderState ? renderState.title || "" : "";
     const difficultyLabel = renderState ? renderState.difficultyLabel || "" : "";
     const settingsLabel = renderState ? renderState.settingsLabel || "" : "";
-    const panelTop = boardTop - 136;
-    const panelHeight = 100;
 
     context.fillStyle = theme.surfaceTint || "#fff7eb";
-    context.fillRect(boardLeft - 6, panelTop, boardSize + 12, panelHeight);
+    context.fillRect(boardLeft - 6, metrics.headerPanelTop, boardSize + 12, metrics.headerPanelHeight);
 
     context.fillStyle = theme.boardBase || "#ffffff";
-    context.fillRect(boardLeft + 10, panelTop + 18, boardSize - 20, panelHeight - 34);
+    context.fillRect(boardLeft + 10, metrics.headerPanelTop + 18, boardSize - 20, metrics.headerPanelHeight - 34);
 
     context.fillStyle = theme.ornament || "#d9a65a";
-    context.fillRect(boardLeft + 16, panelTop + 28, 36, 2);
-    context.fillRect(boardLeft + boardSize - 52, panelTop + 28, 36, 2);
+    context.fillRect(boardLeft + 16, metrics.headerPanelTop + 28, 36, 2);
+    context.fillRect(boardLeft + boardSize - 52, metrics.headerPanelTop + 28, 36, 2);
 
     if (title) {
       context.fillStyle = theme.toolText || "#1f2933";
       context.font = "bold 24px sans-serif";
       context.textAlign = "left";
       context.textBaseline = "middle";
-      context.fillText(title, boardLeft, boardTop - 92);
+      context.fillText(title, boardLeft, titleTop);
     }
 
     if (difficultyLabel) {
@@ -139,7 +174,7 @@ function createBoardScene(options) {
       context.font = "14px sans-serif";
       context.textAlign = "left";
       context.textBaseline = "middle";
-      context.fillText(difficultyLabel, boardLeft, boardTop - 66);
+      context.fillText(difficultyLabel, boardLeft, difficultyTop);
     }
 
     if (settingsLabel) {
@@ -150,12 +185,19 @@ function createBoardScene(options) {
         metrics.settingsWidth,
         metrics.settingsHeight,
         settingsLabel,
-        theme
+        {
+          fill: theme.surfaceTint || "#fff7eb",
+          border: theme.buttonShadow || "#c98b6f",
+          ornament: theme.ornament || "#d9a65a",
+          textColor: theme.toolText || "#1f2933",
+          font: "15px sans-serif",
+          borderWidth: 1
+        }
       );
     }
   }
 
-  function drawFeedback(context, feedbackMessage, feedbackType, theme) {
+  function drawFeedback(context, feedbackMessage, feedbackType, hintProgress, theme) {
     if (!feedbackMessage) {
       return;
     }
@@ -166,9 +208,14 @@ function createBoardScene(options) {
     const text = feedbackType === "warning"
       ? "#7a3030"
       : theme.feedbackText || "#304252";
+    const lineHeight = 17;
+    const maxWidth = boardSize - 24;
+    const lines = getWrappedLines(context, feedbackMessage, maxWidth, 3);
+    const feedbackHeight = Math.max(34, 14 + lines.length * lineHeight);
+    const feedbackTop = boardTop - 20 - feedbackHeight;
 
     context.fillStyle = fill;
-    drawRoundedRectPath(context, boardLeft, boardTop - 54, boardSize, 34, 12);
+    drawRoundedRectPath(context, boardLeft, feedbackTop, boardSize, feedbackHeight, 12);
     if (typeof context.fill === "function") {
       context.fill();
     }
@@ -176,8 +223,219 @@ function createBoardScene(options) {
     context.fillStyle = text;
     context.font = "15px sans-serif";
     context.textAlign = "left";
+    context.textBaseline = "top";
+    drawWrappedText(context, feedbackMessage, boardLeft + 12, feedbackTop + 8, maxWidth, lineHeight, 3);
+
+    if (hintProgress && hintProgress.current && hintProgress.total) {
+      context.fillStyle = theme.buttonShadow || "#8f7569";
+      context.font = "12px sans-serif";
+      context.textAlign = "right";
+      context.textBaseline = "top";
+      context.fillText(
+        String(hintProgress.current) + "/" + String(hintProgress.total),
+        boardLeft + boardSize - 12,
+        feedbackTop + 8
+      );
+    }
+  }
+
+  function drawCompletionCard(context, renderState, theme, metrics) {
+    if (!renderState || !renderState.completionVisible || !renderState.completionSummary) {
+      return;
+    }
+
+    const summary = renderState.completionSummary;
+    const t = renderState.t;
+    const isAdvanced = isAdvancedDifficulty(summary.difficulty);
+    const actions = getCompletionActions(summary);
+    const title = summary.title || (isAdvanced ? t("completion.titleByDifficulty.expert") : t("completion.titleByDifficulty.beginner"));
+    const encouragement = summary.encouragement || "";
+    const cardLeft = metrics.completionCardLeft;
+    const cardTop = metrics.completionCardTop;
+    const cardWidth = metrics.completionCardWidth;
+    const cardHeight = metrics.completionCardHeight;
+    const horizontalInset = 18;
+    const actionGap = 12;
+    const buttonHeight = 42;
+    const buttonWidth = Math.floor((cardWidth - horizontalInset * 2 - (actions.length - 1) * actionGap) / actions.length);
+    const buttonTop = cardTop + cardHeight - 74;
+    const infoLeft = cardLeft + 24;
+    const dividerLeft = cardLeft + 20;
+    const dividerWidth = cardWidth - 40;
+    const tags = summary.resultTags.slice(0, 3);
+    const tagWidth = Math.min(88, Math.floor((cardWidth - 48 - Math.max(0, tags.length - 1) * 10) / Math.max(tags.length, 1)));
+    const tagGap = 10;
+    const tagRowWidth = tags.length > 0
+      ? tags.length * tagWidth + (tags.length - 1) * tagGap
+      : 0;
+    const tagStartLeft = cardLeft + Math.floor((cardWidth - tagRowWidth) / 2);
+
+    context.fillStyle = "rgba(34, 32, 28, 0.24)";
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    context.fillStyle = theme.surfaceTint || "#fff7eb";
+    drawRoundedRectPath(context, cardLeft, cardTop, cardWidth, cardHeight, 22);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = 1.2;
+    context.strokeStyle = theme.buttonShadow || "#c98b6f";
+    drawRoundedRectPath(context, cardLeft, cardTop, cardWidth, cardHeight, 22);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+
+    context.fillStyle = theme.toolText || "#1f2933";
+    context.font = "bold 24px sans-serif";
+    context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(feedbackMessage, boardLeft + 12, boardTop - 37);
+    context.fillText(title, cardLeft + cardWidth / 2, cardTop + 46);
+
+    context.fillStyle = theme.buttonShadow || "#8f7569";
+    context.font = "14px sans-serif";
+    context.fillText(
+      t("difficulty." + summary.difficulty) + " · " + t("completion.timeLabel") + " " + summary.elapsedSeconds + "s",
+      cardLeft + cardWidth / 2,
+      cardTop + 86
+    );
+
+    context.strokeStyle = theme.ornament || "#d9a65a";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(dividerLeft, cardTop + 112);
+    context.lineTo(dividerLeft + dividerWidth, cardTop + 112);
+    context.stroke();
+
+    context.fillStyle = theme.toolText || "#1f2933";
+    context.font = "15px sans-serif";
+    context.textAlign = "left";
+    context.fillText(
+      t("completion.hintLabel") + " " + summary.hintCount,
+      infoLeft,
+      cardTop + 146
+    );
+
+    if (isAdvanced) {
+      context.fillText(
+        t("completion.checkLabel") + " " + summary.checkCount,
+        infoLeft,
+        cardTop + 184
+      );
+      context.fillText(
+        t("completion.mistakeLabel") + " " + summary.mistakeCount,
+        infoLeft,
+        cardTop + 222
+      );
+
+      context.textAlign = "center";
+      context.font = "13px sans-serif";
+      tags.forEach(function (tag, index) {
+        const tagLeft = tagStartLeft + index * (tagWidth + tagGap);
+        context.fillStyle = theme.feedbackFill || "#e9eef3";
+        drawRoundedRectPath(context, tagLeft, cardTop + 264, tagWidth, 32, 16);
+        if (typeof context.fill === "function") {
+          context.fill();
+        }
+        context.fillStyle = theme.feedbackText || "#304252";
+        context.fillText(tag, tagLeft + tagWidth / 2, cardTop + 280);
+      });
+    } else {
+      context.textAlign = "center";
+      context.font = "15px sans-serif";
+      context.fillText(encouragement, cardLeft + cardWidth / 2, cardTop + 202);
+    }
+
+    actions.forEach(function (action, index) {
+      const left = cardLeft + horizontalInset + index * (buttonWidth + actionGap);
+      drawOverlayButton(
+        context,
+        left,
+        buttonTop,
+        buttonWidth,
+        buttonHeight,
+        action === "new-game"
+          ? t("completion.nextAction")
+          : action === "home"
+            ? t("completion.homeAction")
+            : t("completion.statsAction"),
+        theme
+      );
+    });
+  }
+
+  function drawStatsOverlay(context, renderState, theme, metrics) {
+    if (!renderState || !renderState.statsOverlayVisible || !renderState.statsSnapshot || !renderState.completionSummary) {
+      return;
+    }
+
+    const stats = renderState.statsSnapshot;
+    const summary = renderState.completionSummary;
+    const t = renderState.t;
+    const cardLeft = metrics.statsCardLeft;
+    const cardTop = metrics.statsCardTop;
+    const cardWidth = metrics.statsCardWidth;
+    const cardHeight = metrics.statsCardHeight;
+    const bestTime = stats.bestTimeByDifficulty[summary.difficulty];
+    const averageTime = stats.averageTimeByDifficulty[summary.difficulty];
+    const completionCount = stats.completionCountByDifficulty[summary.difficulty];
+    const hintCount = stats.hintCountByDifficulty[summary.difficulty];
+    const currentStreakDays = stats.currentStreakDays || 0;
+    const bestStreakDays = stats.bestStreakDays || 0;
+    const averageHints = completionCount > 0
+      ? (hintCount / completionCount).toFixed(1).replace(/\.0$/, "")
+      : "0";
+    const buttonWidth = 166;
+    const buttonHeight = 40;
+    const buttonLeft = cardLeft + Math.floor((cardWidth - buttonWidth) / 2);
+    const buttonTop = cardTop + cardHeight - 68;
+
+    context.fillStyle = "rgba(24, 24, 24, 0.28)";
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    context.fillStyle = theme.surfaceTint || "#fff7eb";
+    drawRoundedRectPath(context, cardLeft, cardTop, cardWidth, cardHeight, 22);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = 1.2;
+    context.strokeStyle = theme.buttonShadow || "#c98b6f";
+    drawRoundedRectPath(context, cardLeft, cardTop, cardWidth, cardHeight, 22);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+
+    context.fillStyle = theme.toolText || "#1f2933";
+    context.font = "bold 22px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(t("completion.statsTitle"), cardLeft + cardWidth / 2, cardTop + 46);
+
+    context.fillStyle = theme.buttonShadow || "#8f7569";
+    context.font = "14px sans-serif";
+    context.fillText(t("difficulty." + summary.difficulty), cardLeft + cardWidth / 2, cardTop + 82);
+
+    context.strokeStyle = theme.ornament || "#d9a65a";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(cardLeft + 20, cardTop + 108);
+    context.lineTo(cardLeft + cardWidth - 20, cardTop + 108);
+    context.stroke();
+
+    context.fillStyle = theme.toolText || "#1f2933";
+    context.font = "15px sans-serif";
+    context.textAlign = "left";
+    context.fillText(t("completion.statsTotalLabel") + " " + stats.totalCompleted, cardLeft + 22, cardTop + 146);
+    context.fillText(t("completion.statsCompletedLabel") + " " + completionCount, cardLeft + 22, cardTop + 178);
+    context.fillText(t("completion.statsCurrentStreakLabel") + " " + currentStreakDays + " 天", cardLeft + 22, cardTop + 210);
+    context.fillText(t("completion.statsBestStreakLabel") + " " + bestStreakDays + " 天", cardLeft + 22, cardTop + 242);
+    context.fillText(t("completion.statsBestLabel") + " " + bestTime + "s", cardLeft + 22, cardTop + 274);
+    context.fillText(t("completion.statsAverageLabel") + " " + averageTime + "s", cardLeft + 22, cardTop + 306);
+    context.fillText(t("completion.statsHintsLabel") + " " + hintCount, cardLeft + 22, cardTop + 338);
+    context.fillText(t("completion.statsHintsAverageLabel") + " " + averageHints, cardLeft + 22, cardTop + 370);
+
+    drawOverlayButton(context, buttonLeft, buttonTop, buttonWidth, buttonHeight, t("completion.backToCompletion"), theme);
   }
 
   function draw(context, cells, renderState) {
@@ -192,6 +450,7 @@ function createBoardScene(options) {
       context,
       renderState ? renderState.feedbackMessage : "",
       renderState ? renderState.feedbackType : "info",
+      renderState ? renderState.hintProgress : null,
       theme
     );
 
@@ -205,6 +464,8 @@ function createBoardScene(options) {
         ? theme.issueFill || "#f0d5d5"
         : cell.hintTarget
           ? theme.selected || "#9ed9c8"
+          : cell.hintRelated
+            ? theme.hintRelated || "#e6efe8"
           : cell.selected
             ? theme.selected || "#9ed9c8"
             : cell.sameValue
@@ -255,6 +516,9 @@ function createBoardScene(options) {
       context.lineTo(boardLeft + line * cellSize, boardTop + boardSize);
       context.stroke();
     }
+
+    drawCompletionCard(context, renderState, theme, metrics);
+    drawStatsOverlay(context, renderState, theme, metrics);
   }
 
   function hitTestHeaderAction(x, y) {
@@ -272,11 +536,67 @@ function createBoardScene(options) {
     return null;
   }
 
+  function hitTestCompletionAction(x, y, renderState) {
+    if (!renderState || !renderState.completionVisible || !renderState.completionSummary) {
+      return null;
+    }
+
+    const metrics = getMetrics();
+    const actions = getCompletionActions(renderState.completionSummary);
+    const horizontalInset = 18;
+    const actionGap = 12;
+    const buttonHeight = 42;
+    const buttonWidth = Math.floor(
+      (metrics.completionCardWidth - horizontalInset * 2 - (actions.length - 1) * actionGap) / actions.length
+    );
+    const buttonTop = metrics.completionCardTop + metrics.completionCardHeight - 74;
+
+    for (let index = 0; index < actions.length; index += 1) {
+      const left = metrics.completionCardLeft + horizontalInset + index * (buttonWidth + actionGap);
+      if (
+        x >= left &&
+        x <= left + buttonWidth &&
+        y >= buttonTop &&
+        y <= buttonTop + buttonHeight
+      ) {
+        return { type: "completion-action", value: actions[index] };
+      }
+    }
+
+    return null;
+  }
+
+  function hitTestStatsOverlayAction(x, y, renderState) {
+    if (!renderState || !renderState.statsOverlayVisible) {
+      return null;
+    }
+
+    const metrics = getMetrics();
+    const width = 166;
+    const height = 40;
+    const left = metrics.statsCardLeft + Math.floor((metrics.statsCardWidth - width) / 2);
+    const top = metrics.statsCardTop + metrics.statsCardHeight - 68;
+
+    if (
+      x >= left &&
+      x <= left + width &&
+      y >= top &&
+      y <= top + height
+    ) {
+      return { type: "stats-action", value: "back-to-completion" };
+    }
+
+    return null;
+  }
+
   return {
     draw: draw,
+    getCompletionActions: getCompletionActions,
     getCellIndexByPoint: getCellIndexByPoint,
     getMetrics: getMetrics,
-    hitTestHeaderAction: hitTestHeaderAction
+    hitTestHeaderAction: hitTestHeaderAction,
+    hitTestCompletionAction: hitTestCompletionAction,
+    hitTestStatsOverlayAction: hitTestStatsOverlayAction
   };
 }
 

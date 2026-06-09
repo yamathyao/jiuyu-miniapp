@@ -3,7 +3,7 @@
 > 一款日常可玩、专业可调的数独微信小游戏。  
 > A Sudoku WeChat Minigame designed to be friendly for daily play and precise enough for serious solving.
 
-🧩 **当前阶段 / Status:** 小游戏迁移与棋盘核心闭环已完成，当前下一阶段是本地存档与继续游戏。  
+🧩 **当前阶段 / Status:** 小游戏主循环、四档难度、分层提示、本地统计与完成反馈已接通，当前下一阶段是继续扩题并补更多高阶技巧体验。  
 📱 **平台 / Platform:** 微信小游戏 / WeChat Minigame  
 🌿 **策略 / Strategy:** 本地优先 / Local-first
 
@@ -33,6 +33,7 @@ The first release focuses on the core local Sudoku loop: fast launch, smooth boa
 
 - **本地题库 / Local puzzle bank**  
   内置题目，减少对网络和账号系统的依赖。
+  当前题库已按难度拆分到 `js/data/puzzles-*.js`，并配有校验与摘要脚本，方便持续扩题。
 
 - **顺手的棋盘 / Smooth board interaction**  
   已完成选格、同行列宫高亮、相同数字高亮、数字输入、擦除和撤销。
@@ -43,24 +44,25 @@ The first release focuses on the core local Sudoku loop: fast launch, smooth boa
 - **小游戏主场景 / Minigame board scene**  
   已完成 `Canvas 2D` 单场景结构与触摸命中。
 
-### 🧱 下一阶段 / Next Phase
-
 - **本地进度 / Local progress**  
-  下一步实现自动保存当前局面、候选数、焦点与笔记模式，并支持继续上一局。
-
-- **本地统计 / Local stats**  
-  在存档稳定后再恢复完成局数、连续天数、最好成绩和平均用时。
-
-- **四档难度 / Four difficulty profiles**  
-  仍是长期目标，但不属于当前最优先实现项。
-
-### 🌱 后续恢复 / Later Recovery
-
-- **基础排错 / Error checking**  
-  存档之后再恢复冲突检查和答案检查。
+  已完成当前局面的本地保存与继续游戏，支持保留棋盘、焦点与笔记模式。
 
 - **分层提示 / Layered hints**  
-  提示从方向、格子、技巧到答案逐层展开，优先帮助用户思考。
+  已完成按难度分级的提示流程，支持提示循环、提示层级进度、高阶多格高亮，以及 `x-wing / xy-wing / box-line-reduction / naked-pair` 等差异化提示表现。
+
+- **完成反馈与本地统计 / Completion feedback and local stats**  
+  已完成完成卡片、查看统计、每难度完成数 / 平均时间 / 平均提示、本地连续天数，以及首页最近一局摘要。
+
+### 🧱 下一阶段 / Next Phase
+
+- **高阶技巧覆盖 / Advanced technique coverage**  
+  继续补更多高阶技巧的提示说明、关联高亮与题面覆盖，让 `skilled / expert` 的解题体验更完整。
+
+- **题库持续扩充 / Puzzle bank expansion**  
+  继续按难度扩题，并保持 givens 分布、技巧标签与题面摘要脚本稳定。
+
+- **首页与回访体验 / Return-loop polish**  
+  在现有首页轻提示基础上，继续收拢“最近一局 / 连续天数 / 回到游戏”的反馈节奏。
 
 ### 🌿 更后续方向 / Later Ideas
 
@@ -90,10 +92,11 @@ The first release focuses on the core local Sudoku loop: fast launch, smooth boa
 | 产品设计 / Product design | Done | 已完成当前产品基线与小游戏方向收口 |
 | 文档合并 / Documentation merge | Done | 已统一当前主设计与主计划文档 |
 | 小游戏迁移 / Minigame migration | Done | 已完成入口切换、`js/` 主线结构和单场景数独主循环 |
-| 棋盘核心 / Board core | Done | 已完成手工验证，选格、填数、笔记、擦除、撤销和高亮正常 |
-| 本地存档 / Local storage | Next | 已完成设计与实施计划，等待进入代码实现 |
-| 提示引擎 / Hint engine | Planned | 在小游戏主场景稳定后恢复 |
-| 完成反馈与统计 / Result and stats | Planned | 在小游戏主场景稳定后恢复 |
+| 棋盘核心 / Board core | Done | 已完成选格、填数、笔记、擦除、撤销和高亮闭环 |
+| 本地存档 / Local storage | Done | 已完成当前局面本地保存与继续游戏 |
+| 提示引擎 / Hint engine | Done | 已完成分难度提示、提示循环、层级进度与高阶多格高亮 |
+| 完成反馈与统计 / Result and stats | Done | 已完成完成卡片、统计页、连续天数与首页最近一局摘要 |
+| 高阶技巧与题库扩展 / Advanced coverage | Next | 下一步继续扩题并补更多高阶技巧表现 |
 
 ## 📚 文档导航 / Documentation
 
@@ -147,6 +150,20 @@ cd jiuyu-miniapp
 
 3. AppID 需使用小游戏对应的 AppID。  
    Use the AppID created for WeChat Minigame.
+
+## 🧪 题库维护 / Puzzle Bank Maintenance
+
+新增或调整题库后，建议至少运行以下两个脚本：
+
+```bash
+node scripts/validate-puzzles.js
+node scripts/summarize-puzzles.js
+```
+
+- `validate-puzzles.js`
+  检查 `id` 唯一、难度合法、`puzzle / solution` 长度与字符合法、givens 与解答一致、解答满足数独行列宫约束。
+- `summarize-puzzles.js`
+  输出各难度题量，以及 givens 的最小值、最大值和平均值，便于快速观察题库分布是否偏移。
 
 4. 当前迁移目标入口：  
    Current target entry:

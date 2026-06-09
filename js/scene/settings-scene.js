@@ -1,5 +1,56 @@
-function isProDifficulty(difficulty) {
-  return difficulty === "skilled" || difficulty === "expert";
+const {
+  drawRoundedRectPath,
+  drawPlaque
+} = require("../ui/panel-primitives");
+const {
+  createSharedScenePalette,
+  isProDifficulty
+} = require("../ui/scene-visual-spec");
+
+function getFontSize(font) {
+  const match = /(\d+)px/.exec(font || "");
+  return match ? Number(match[1]) : 13;
+}
+
+function measureTextWidth(context, text) {
+  if (context && typeof context.measureText === "function") {
+    return context.measureText(text).width;
+  }
+
+  return String(text || "").length * getFontSize(context && context.font) * 0.56;
+}
+
+function drawWrappedText(context, text, left, top, maxWidth, lineHeight, maxLines) {
+  const words = String(text || "").split(" ");
+  const lines = [];
+  let currentLine = "";
+
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const nextLine = currentLine ? currentLine + " " + word : word;
+
+    if (measureTextWidth(context, nextLine) <= maxWidth || !currentLine) {
+      currentLine = nextLine;
+      continue;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+
+    if (maxLines && lines.length === maxLines - 1) {
+      break;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  const visibleLines = maxLines ? lines.slice(0, maxLines) : lines;
+
+  visibleLines.forEach(function (line, lineIndex) {
+    context.fillText(line, left, top + lineHeight * lineIndex);
+  });
 }
 
 function createSettingsScene(options) {
@@ -7,14 +58,35 @@ function createSettingsScene(options) {
   const canvasHeight = options.canvasHeight || 812;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const headerTop = 92;
-  const languageCardTop = 216;
-  const languageCardHeight = 102;
-  const infoCardHeight = 52;
-  const infoGap = 14;
-  const summaryTop = languageCardTop + languageCardHeight + 24;
+  const headerTop = 76;
+  const panelTop = 130;
+  const heroHeight = 92;
+  const sectionGap = 28;
+  const sectionTitleToCardGap = 22;
+  const metaGap = 20;
+  const languageSectionTop = panelTop + heroHeight + sectionGap;
+  const languageCardTop = languageSectionTop + sectionTitleToCardGap;
+  const languageCardHeight = 94;
+  const restartCardHeight = 80;
+  const difficultyCardGap = 12;
+  const difficultyCardHeight = 74;
+  const difficultyCardWidth = Math.floor((contentWidth - difficultyCardGap) / 2);
+  const helperCardHeight = 62;
 
-  function getMetrics() {
+  function getMetrics(renderState) {
+    const t = renderState && typeof renderState.t === "function"
+      ? renderState.t
+      : function (key) {
+          return key;
+        };
+    const isEnglish = t("common.back") === "Back";
+    const restartCardTop = languageCardTop + languageCardHeight + 20;
+    const difficultySectionTop = restartCardTop + restartCardHeight + sectionGap;
+    const difficultyMetaTop = difficultySectionTop + metaGap;
+    const difficultyCardsTop = difficultyMetaTop + metaGap;
+    const helperCardTop = difficultyCardsTop + difficultyCardHeight * 2 + difficultyCardGap + 24;
+    const helperCardBodyTop = helperCardTop + (isEnglish ? 21 : helperCardHeight / 2);
+
     return {
       contentLeft: contentLeft,
       contentWidth: contentWidth,
@@ -23,13 +95,23 @@ function createSettingsScene(options) {
       backWidth: 76,
       backHeight: 34,
       languageCardLeft: contentLeft,
+      languageSectionTop: languageSectionTop,
       languageCardTop: languageCardTop,
       languageCardWidth: contentWidth,
       languageCardHeight: languageCardHeight,
-      summaryTop: summaryTop,
-      summaryCardWidth: contentWidth,
-      summaryCardHeight: infoCardHeight,
-      helperCardTop: summaryTop + infoCardHeight + infoGap
+      restartCardTop: restartCardTop,
+      restartCardHeight: restartCardHeight,
+      difficultyCardLeft: contentLeft,
+      difficultySectionTop: difficultySectionTop,
+      difficultyCardTop: difficultyCardsTop,
+      difficultyMetaTop: difficultyMetaTop,
+      difficultyCardWidth: difficultyCardWidth,
+      difficultyCardHeight: difficultyCardHeight,
+      difficultyCardGap: difficultyCardGap,
+      difficultySecondRowTop: difficultyCardsTop + difficultyCardHeight + difficultyCardGap,
+      helperCardTop: helperCardTop,
+      helperCardHeight: helperCardHeight,
+      helperCardBodyTop: helperCardBodyTop
     };
   }
 
@@ -37,126 +119,313 @@ function createSettingsScene(options) {
     const difficulty = renderState && renderState.selectedDifficulty
       ? renderState.selectedDifficulty
       : "beginner";
+    const palette = createSharedScenePalette(difficulty);
 
-    if (isProDifficulty(difficulty)) {
-      return {
-        background: "#eef1ee",
-        haloFill: "#dde5e3",
-        panelFill: "#f7f4ee",
-        headerWashFill: "#f2f5f2",
-        titleColor: "#213039",
-        bodyColor: "#526269",
-        cardFill: "#faf8f2",
-        cardBorder: "#c5cecd",
-        cardAccent: "#dde3e1",
-        accentText: "#2d4350",
-        ornament: "#7f8d93",
-        helperFill: "#95a3a8",
-        dividerFill: "#8da0ab"
-      };
-    }
-
-    return {
-      background: "#f9efe3",
-      haloFill: "#f5e5d1",
-      panelFill: "#f8ead7",
-      headerWashFill: "#fbf1e4",
-      titleColor: "#6b3e42",
-      bodyColor: "#8f6d65",
-      cardFill: "#fff8ef",
-      cardBorder: "#e0bda4",
-      cardAccent: "#f5e4d5",
-      accentText: "#7a4d4f",
-      ornament: "#c89256",
-      helperFill: "#b58f72",
-      dividerFill: "#c68e5f"
-    };
+    return Object.assign({}, palette, {
+      accentSoftText: isProDifficulty(difficulty) ? "#6e7974" : "#8d6c65"
+    });
   }
 
-  function drawRoundedRectPath(context, left, top, width, height, radius) {
-    if (typeof context.arcTo !== "function") {
-      context.beginPath();
-      context.moveTo(left, top);
-      context.lineTo(left + width, top);
-      context.lineTo(left + width, top + height);
-      context.lineTo(left, top + height);
-      context.lineTo(left, top);
-      if (typeof context.closePath === "function") {
-        context.closePath();
+  function drawTopline(context, metrics, visualSpec, t) {
+    drawPlaque(
+      context,
+      metrics.backLeft,
+      metrics.backTop,
+      82,
+      metrics.backHeight,
+      t("common.back"),
+      {
+        fill: visualSpec.cardFill,
+        border: visualSpec.cardBorder,
+        ornament: visualSpec.ornament,
+        textColor: visualSpec.accentText,
+        font: "15px sans-serif",
+        showOrnament: false
       }
-      return;
-    }
-
-    const right = left + width;
-    const bottom = top + height;
-    const safeRadius = Math.min(radius, width / 2, height / 2);
-
-    context.beginPath();
-    context.moveTo(left + safeRadius, top);
-    context.lineTo(right - safeRadius, top);
-    context.arcTo(right, top, right, top + safeRadius, safeRadius);
-    context.lineTo(right, bottom - safeRadius);
-    context.arcTo(right, bottom, right - safeRadius, bottom, safeRadius);
-    context.lineTo(left + safeRadius, bottom);
-    context.arcTo(left, bottom, left, bottom - safeRadius, safeRadius);
-    context.lineTo(left, top + safeRadius);
-    context.arcTo(left, top, left + safeRadius, top, safeRadius);
-    if (typeof context.closePath === "function") {
-      context.closePath();
-    }
+    );
   }
 
-  function drawPlaque(context, left, top, width, height, label, visualSpec, font) {
-    context.fillStyle = visualSpec.cardFill;
-    drawRoundedRectPath(context, left, top, width, height, 18);
+  function drawHeroPanel(context, metrics, visualSpec, t) {
+    const isEnglish = t("common.back") === "Back";
+
+    context.fillStyle = visualSpec.cardAccent;
+    drawRoundedRectPath(context, metrics.contentLeft, panelTop, metrics.contentWidth, heroHeight, 22);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
     context.lineWidth = 1.1;
     context.strokeStyle = visualSpec.cardBorder;
-    drawRoundedRectPath(context, left, top, width, height, 18);
+    drawRoundedRectPath(context, metrics.contentLeft, panelTop, metrics.contentWidth, heroHeight, 22);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+
+    context.fillStyle = visualSpec.titleColor;
+    context.font = "bold 28px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(t("settings.pageTitle"), canvasWidth / 2, panelTop + 30);
+
+    context.fillStyle = visualSpec.bodyColor;
+    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
+    context.fillText(t("settings.subtitle"), canvasWidth / 2, panelTop + 62);
+  }
+
+  function drawActionButtonBlock(context, left, top, width, height, visualSpec, options) {
+    const primaryText = options.primaryText;
+    const secondaryText = options.secondaryText;
+    const eyebrowText = options.eyebrowText;
+    const align = options.align || "left";
+    const accent = Boolean(options.accent);
+    const radius = options.radius || 20;
+    const lift = accent ? 5 : 4;
+    const centerX = left + width / 2;
+    const textLeft = left + 18;
+    const primaryY = options.primaryY || (top + (secondaryText ? 38 : height / 2));
+    const secondaryY = options.secondaryY || (top + height - 24);
+
+    context.fillStyle = accent ? "rgba(107, 79, 59, 0.22)" : "rgba(118, 95, 84, 0.16)";
+    drawRoundedRectPath(context, left, top + lift, width, height, radius);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.fillStyle = accent ? visualSpec.cardAccent : visualSpec.cardFill;
+    drawRoundedRectPath(context, left, top, width, height, radius);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = accent ? 1.3 : 1.1;
+    context.strokeStyle = accent ? visualSpec.ornament : visualSpec.cardBorder;
+    drawRoundedRectPath(context, left, top, width, height, radius);
     if (typeof context.stroke === "function") {
       context.stroke();
     }
 
     context.lineWidth = 1;
-    context.strokeStyle = visualSpec.ornament;
-    context.beginPath();
-    context.moveTo(left + 16, top + height / 2);
-    context.lineTo(left + 30, top + height / 2);
-    context.moveTo(left + width - 30, top + height / 2);
-    context.lineTo(left + width - 16, top + height / 2);
+    context.strokeStyle = accent ? "rgba(255, 248, 240, 0.68)" : "rgba(255, 255, 255, 0.7)";
+    drawRoundedRectPath(context, left + 1.5, top + 1.5, width - 3, height - 7, Math.max(12, radius - 4));
     if (typeof context.stroke === "function") {
       context.stroke();
     }
 
-    context.fillStyle = visualSpec.accentText;
-    context.font = font || "bold 16px sans-serif";
-    context.textAlign = "center";
+    context.fillStyle = accent ? "rgba(255, 246, 236, 0.18)" : "rgba(255, 255, 255, 0.24)";
+    drawRoundedRectPath(context, left + 8, top + 8, width - 16, 18, 10);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.fillStyle = accent ? "rgba(122, 84, 55, 0.12)" : "rgba(136, 112, 98, 0.1)";
+    drawRoundedRectPath(context, left + 10, top + height - 20, width - 20, 8, 4);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    if (eyebrowText) {
+      context.fillStyle = accent ? visualSpec.accentText : visualSpec.accentSoftText;
+      context.font = "12px sans-serif";
+      context.textAlign = align;
+      context.textBaseline = "middle";
+      context.fillText(eyebrowText, align === "center" ? centerX : textLeft, top + 22);
+    }
+
+    context.fillStyle = accent ? visualSpec.accentText : visualSpec.titleColor;
+    context.font = secondaryText ? "bold 22px sans-serif" : "bold 18px sans-serif";
+    context.textAlign = align;
     context.textBaseline = "middle";
-    context.fillText(label, left + width / 2, top + height / 2);
+    context.fillText(primaryText, align === "center" ? centerX : textLeft, primaryY);
+
+    if (!secondaryText) {
+      return;
+    }
+
+    context.fillStyle = accent ? visualSpec.accentText : visualSpec.bodyColor;
+    context.font = "12px sans-serif";
+    context.textAlign = align;
+    context.textBaseline = "middle";
+    context.fillText(secondaryText, align === "center" ? centerX : textLeft, secondaryY);
   }
 
-  function drawInfoCard(context, left, top, width, height, text, visualSpec) {
+  function drawLanguageCard(context, metrics, visualSpec, renderState, t) {
+    const language = renderState && renderState.language === "en"
+      ? "en"
+      : "zh-CN";
+    const isEnglish = language === "en";
+    const languageLabel = isEnglish ? t("settings.languageEn") : t("settings.languageZh");
+
+    context.fillStyle = visualSpec.helperFill;
+    context.font = "bold 15px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      t("settings.languageLabel"),
+      metrics.languageCardLeft + metrics.languageCardWidth / 2,
+      metrics.languageSectionTop
+    );
+
+    drawActionButtonBlock(
+      context,
+      metrics.languageCardLeft,
+      metrics.languageCardTop,
+      metrics.languageCardWidth,
+      metrics.languageCardHeight,
+      visualSpec,
+      {
+        primaryText: languageLabel,
+        secondaryText: t("settings.languageHint")
+      }
+    );
+  }
+
+  function drawDifficultyCard(context, left, top, width, height, label, hint, active, visualSpec) {
+    context.fillStyle = active ? visualSpec.cardAccent : visualSpec.cardFill;
+    drawRoundedRectPath(context, left, top, width, height, 18);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = active ? 1.4 : 1;
+    context.strokeStyle = active ? visualSpec.ornament : visualSpec.cardBorder;
+    drawRoundedRectPath(context, left, top, width, height, 18);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+
+    context.fillStyle = active ? visualSpec.accentText : visualSpec.titleColor;
+    context.font = "bold 15px sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.fillText(label, left + 12, top + 24);
+
+    context.fillStyle = visualSpec.accentSoftText;
+    context.font = measureTextWidth({ font: "10px sans-serif" }, hint) > width - 24
+      ? "9px sans-serif"
+      : "10px sans-serif";
+    context.fillText(hint, left + 12, top + 46);
+  }
+
+  function drawRestartCard(context, metrics, visualSpec, renderState, t) {
+    drawActionButtonBlock(
+      context,
+      metrics.contentLeft,
+      metrics.restartCardTop,
+      metrics.contentWidth,
+      metrics.restartCardHeight,
+      visualSpec,
+      {
+        primaryText: t("settings.restartLabel"),
+        secondaryText: t("settings.restartHint"),
+        accent: true,
+        primaryY: metrics.restartCardTop + 30,
+        secondaryY: metrics.restartCardTop + 58
+      }
+    );
+  }
+
+  function drawDifficultyCards(context, metrics, visualSpec, renderState, t) {
+    const difficulty = renderState && renderState.selectedDifficulty
+      ? renderState.selectedDifficulty
+      : "beginner";
+    const cards = [
+      {
+        value: "beginner",
+        left: metrics.difficultyCardLeft,
+        top: metrics.difficultyCardTop,
+        hint: t("settings.difficultyBeginnerHint")
+      },
+      {
+        value: "intermediate",
+        left: metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap,
+        top: metrics.difficultyCardTop,
+        hint: t("settings.difficultyIntermediateHint")
+      },
+      {
+        value: "skilled",
+        left: metrics.difficultyCardLeft,
+        top: metrics.difficultySecondRowTop,
+        hint: t("settings.difficultySkilledHint")
+      },
+      {
+        value: "expert",
+        left: metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap,
+        top: metrics.difficultySecondRowTop,
+        hint: t("settings.difficultyExpertHint")
+      }
+    ];
+
+    context.fillStyle = visualSpec.helperFill;
+    context.font = "bold 15px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      t("settings.difficultyLabel"),
+      metrics.difficultyCardLeft + metrics.contentWidth / 2,
+      metrics.difficultySectionTop
+    );
+
+    context.fillStyle = visualSpec.accentSoftText;
+    context.font = "13px sans-serif";
+    context.fillText(
+      t("settings.difficultyCurrent", {
+        difficulty: t("difficulty." + difficulty)
+      }),
+      metrics.difficultyCardLeft + metrics.contentWidth / 2,
+      metrics.difficultyMetaTop
+    );
+
+    cards.forEach(function (card) {
+      drawDifficultyCard(
+        context,
+        card.left,
+        card.top,
+        metrics.difficultyCardWidth,
+        metrics.difficultyCardHeight,
+        t("difficulty." + card.value),
+        card.hint,
+        difficulty === card.value,
+        visualSpec
+      );
+    });
+  }
+
+  function drawHelperCards(context, metrics, visualSpec, renderState, t) {
+    const helperText = t("settings.helperFuture");
+    const isEnglish = renderState && renderState.language === "en";
+
     context.fillStyle = visualSpec.cardFill;
-    drawRoundedRectPath(context, left, top, width, height, 16);
+    drawRoundedRectPath(context, metrics.contentLeft, metrics.helperCardTop, metrics.contentWidth, metrics.helperCardHeight, 18);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
     context.lineWidth = 1;
     context.strokeStyle = visualSpec.cardBorder;
-    drawRoundedRectPath(context, left, top, width, height, 16);
+    drawRoundedRectPath(context, metrics.contentLeft, metrics.helperCardTop, metrics.contentWidth, metrics.helperCardHeight, 18);
     if (typeof context.stroke === "function") {
       context.stroke();
     }
 
     context.fillStyle = visualSpec.bodyColor;
-    context.font = "15px sans-serif";
+    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
     context.textAlign = "left";
     context.textBaseline = "middle";
-    context.fillText(text, left + 18, top + height / 2);
+
+    if (isEnglish) {
+      drawWrappedText(
+        context,
+        helperText,
+        metrics.contentLeft + 14,
+        metrics.helperCardBodyTop,
+        metrics.contentWidth - 28,
+        15,
+        2
+      );
+      return;
+    }
+
+    context.fillText(helperText, metrics.contentLeft + 14, metrics.helperCardBodyTop);
   }
 
   function drawBackdrop(context, metrics, visualSpec) {
@@ -171,119 +440,28 @@ function createSettingsScene(options) {
 
     context.fillStyle = visualSpec.headerWashFill;
     context.fillRect(metrics.contentLeft + 4, 76, contentWidth - 8, 96);
-
-    context.fillStyle = visualSpec.dividerFill;
-    context.fillRect(metrics.contentLeft + 18, 92, 36, 2);
-    context.fillRect(metrics.contentLeft + metrics.contentWidth - 54, 92, 36, 2);
   }
 
   function draw(context, renderState) {
-    const metrics = getMetrics();
+    const metrics = getMetrics(renderState);
     const t = renderState && typeof renderState.t === "function"
       ? renderState.t
       : function (key) {
           return key;
         };
-    const languageLabel = renderState && renderState.language === "en"
-      ? t("settings.languageEn")
-      : t("settings.languageZh");
-    const difficulty = renderState && renderState.selectedDifficulty
-      ? renderState.selectedDifficulty
-      : "beginner";
     const visualSpec = getVisualSpec(renderState);
-    const backPlaqueWidth = 82;
 
     drawBackdrop(context, metrics, visualSpec);
-
-    drawPlaque(
-      context,
-      metrics.backLeft,
-      metrics.backTop,
-      backPlaqueWidth,
-      metrics.backHeight,
-      t("common.back"),
-      visualSpec,
-      "15px sans-serif"
-    );
-
-    context.fillStyle = visualSpec.titleColor;
-    context.font = "bold 28px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(t("settings.pageTitle"), canvasWidth / 2, headerTop + 12);
-
-    context.fillStyle = visualSpec.helperFill;
-    context.font = "13px sans-serif";
-    context.textAlign = "left";
-    context.fillText(t("settings.languageLabel"), metrics.languageCardLeft, metrics.languageCardTop - 16);
-
-    context.fillStyle = visualSpec.cardAccent;
-    drawRoundedRectPath(
-      context,
-      metrics.languageCardLeft,
-      metrics.languageCardTop,
-      metrics.languageCardWidth,
-      metrics.languageCardHeight,
-      20
-    );
-    if (typeof context.fill === "function") {
-      context.fill();
-    }
-
-    context.lineWidth = 1.2;
-    context.strokeStyle = visualSpec.cardBorder;
-    drawRoundedRectPath(
-      context,
-      metrics.languageCardLeft,
-      metrics.languageCardTop,
-      metrics.languageCardWidth,
-      metrics.languageCardHeight,
-      20
-    );
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
-    context.fillStyle = visualSpec.titleColor;
-    context.font = "bold 24px sans-serif";
-    context.textAlign = "center";
-    context.fillText(t("settings.languageLabel"), canvasWidth / 2, metrics.languageCardTop + 34);
-
-    context.fillStyle = visualSpec.bodyColor;
-    context.font = "14px sans-serif";
-    context.fillText(
-      t("settings.languageSummary", {
-        language: languageLabel
-      }),
-      canvasWidth / 2,
-      metrics.languageCardTop + 68
-    );
-
-    drawInfoCard(
-      context,
-      metrics.contentLeft,
-      metrics.summaryTop,
-      metrics.summaryCardWidth,
-      metrics.summaryCardHeight,
-      t("settings.difficultySummary", {
-        difficulty: t("difficulty." + difficulty)
-      }),
-      visualSpec
-    );
-
-    drawInfoCard(
-      context,
-      metrics.contentLeft,
-      metrics.helperCardTop,
-      metrics.summaryCardWidth,
-      metrics.summaryCardHeight,
-      t("settings.helper"),
-      visualSpec
-    );
+    drawTopline(context, metrics, visualSpec, t);
+    drawHeroPanel(context, metrics, visualSpec, t);
+    drawLanguageCard(context, metrics, visualSpec, renderState, t);
+    drawRestartCard(context, metrics, visualSpec, renderState, t);
+    drawDifficultyCards(context, metrics, visualSpec, renderState, t);
+    drawHelperCards(context, metrics, visualSpec, renderState, t);
   }
 
-  function hitTest(x, y) {
-    const metrics = getMetrics();
+  function hitTest(x, y, renderState) {
+    const metrics = getMetrics(renderState);
 
     if (
       x >= metrics.backLeft &&
@@ -300,7 +478,44 @@ function createSettingsScene(options) {
       y >= metrics.languageCardTop &&
       y <= metrics.languageCardTop + metrics.languageCardHeight
     ) {
-      return { type: "action", value: "language" };
+      return { type: "action", value: "toggle-language-picker" };
+    }
+
+    if (
+      x >= metrics.contentLeft &&
+      x <= metrics.contentLeft + metrics.contentWidth &&
+      y >= metrics.restartCardTop &&
+      y <= metrics.restartCardTop + metrics.restartCardHeight
+    ) {
+      return { type: "action", value: "restart-game" };
+    }
+
+    const difficultyActions = [
+      { value: "beginner", left: metrics.difficultyCardLeft, top: metrics.difficultyCardTop },
+      {
+        value: "intermediate",
+        left: metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap,
+        top: metrics.difficultyCardTop
+      },
+      { value: "skilled", left: metrics.difficultyCardLeft, top: metrics.difficultySecondRowTop },
+      {
+        value: "expert",
+        left: metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap,
+        top: metrics.difficultySecondRowTop
+      }
+    ];
+
+    for (let index = 0; index < difficultyActions.length; index += 1) {
+      const action = difficultyActions[index];
+
+      if (
+        x >= action.left &&
+        x <= action.left + metrics.difficultyCardWidth &&
+        y >= action.top &&
+        y <= action.top + metrics.difficultyCardHeight
+      ) {
+        return { type: "difficulty", value: action.value };
+      }
     }
 
     return null;
@@ -309,7 +524,8 @@ function createSettingsScene(options) {
   return {
     draw: draw,
     hitTest: hitTest,
-    getMetrics: getMetrics
+    getMetrics: getMetrics,
+    getVisualSpec: getVisualSpec
   };
 }
 

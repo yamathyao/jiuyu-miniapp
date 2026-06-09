@@ -1,28 +1,45 @@
-function isProDifficulty(difficulty) {
-  return difficulty === "skilled" || difficulty === "expert";
-}
+const {
+  drawRoundedRectPath,
+  drawPlaque
+} = require("../ui/panel-primitives");
+const {
+  createSharedScenePalette,
+  isProDifficulty
+} = require("../ui/scene-visual-spec");
 
 function createLanguageScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const headerTop = 92;
-  const optionTop = 224;
-  const optionHeight = 72;
-  const optionGap = 18;
+  const shellTop = 112;
+  const shellHeight = 356;
+  const headerTop = shellTop + 18;
+  const sectionTop = shellTop + 114;
+  const optionTop = sectionTop + 14;
+  const optionHeight = 56;
+  const optionGap = 12;
+  const optionWidth = 248;
+  const optionLeft = Math.floor((canvasWidth - optionWidth) / 2);
+  const footerTop = optionTop + optionHeight * 2 + optionGap + 20;
 
   function getMetrics() {
     return {
-      backLeft: contentLeft,
-      backTop: headerTop,
-      backWidth: 76,
-      backHeight: 34,
-      optionLeft: contentLeft,
+      contentLeft: contentLeft,
+      contentWidth: contentWidth,
+      shellTop: shellTop,
+      shellHeight: shellHeight,
+      headerTop: headerTop,
+      optionLeft: optionLeft,
       optionTop: optionTop,
-      optionWidth: contentWidth,
+      optionWidth: optionWidth,
       optionHeight: optionHeight,
-      optionGap: optionGap
+      optionGap: optionGap,
+      sectionTop: sectionTop,
+      footerTop: footerTop,
+      shellLeft: contentLeft,
+      shellRight: contentLeft + contentWidth,
+      shellBottom: shellTop + shellHeight
     };
   }
 
@@ -30,109 +47,29 @@ function createLanguageScene(options) {
     const difficulty = renderState && renderState.selectedDifficulty
       ? renderState.selectedDifficulty
       : "beginner";
+    const isPro = isProDifficulty(difficulty);
+    const palette = createSharedScenePalette(difficulty);
 
-    if (isProDifficulty(difficulty)) {
-      return {
-        background: "#eef1ee",
-        haloFill: "#dde5e3",
-        panelFill: "#f7f4ee",
-        headerWashFill: "#f2f5f2",
-        titleColor: "#213039",
-        bodyColor: "#526269",
-        cardFill: "#faf8f2",
-        cardBorder: "#c5cecd",
-        cardAccent: "#dde3e1",
-        accentText: "#2d4350",
-        helperFill: "#95a3a8",
-        ornament: "#7f8d93",
-        dividerFill: "#8da0ab"
-      };
-    }
-
-    return {
-      background: "#f9efe3",
-      haloFill: "#f5e5d1",
-      panelFill: "#f8ead7",
-      headerWashFill: "#fbf1e4",
-      titleColor: "#6b3e42",
-      bodyColor: "#8f6d65",
-      cardFill: "#fff8ef",
-      cardBorder: "#e0bda4",
-      cardAccent: "#f5e4d5",
-      accentText: "#7a4d4f",
-      helperFill: "#b58f72",
-      ornament: "#c89256",
-      dividerFill: "#c68e5f"
-    };
+    return Object.assign({}, palette, {
+      overlayMask: isPro ? "rgba(39, 43, 41, 0.34)" : "rgba(71, 53, 41, 0.3)",
+      overlayShellFill: isPro ? "#d7d1c7" : "#e7d9c7",
+      overlayPanelFill: isPro ? "#c6c0b6" : "#d8c2aa",
+      overlayHeaderWashFill: isPro ? "#ece7df" : "#f3e9dd",
+      overlayHeroFill: isPro ? "#c9c4bc" : "#dcc5ab",
+      overlayBorder: isPro ? "#8f867b" : "#a88c72",
+      overlayOptionFill: isPro ? "#f0ebe4" : "#f7efe4",
+      overlayOptionShadow: isPro ? "rgba(61, 58, 52, 0.16)" : "rgba(113, 87, 64, 0.14)"
+    });
   }
 
-  function drawRoundedRectPath(context, left, top, width, height, radius) {
-    if (typeof context.arcTo !== "function") {
-      context.beginPath();
-      context.moveTo(left, top);
-      context.lineTo(left + width, top);
-      context.lineTo(left + width, top + height);
-      context.lineTo(left, top + height);
-      context.lineTo(left, top);
-      if (typeof context.closePath === "function") {
-        context.closePath();
-      }
-      return;
-    }
-
-    const right = left + width;
-    const bottom = top + height;
-    const safeRadius = Math.min(radius, width / 2, height / 2);
-
-    context.beginPath();
-    context.moveTo(left + safeRadius, top);
-    context.lineTo(right - safeRadius, top);
-    context.arcTo(right, top, right, top + safeRadius, safeRadius);
-    context.lineTo(right, bottom - safeRadius);
-    context.arcTo(right, bottom, right - safeRadius, bottom, safeRadius);
-    context.lineTo(left + safeRadius, bottom);
-    context.arcTo(left, bottom, left, bottom - safeRadius, safeRadius);
-    context.lineTo(left, top + safeRadius);
-    context.arcTo(left, top, left + safeRadius, top, safeRadius);
-    if (typeof context.closePath === "function") {
-      context.closePath();
-    }
-  }
-
-  function drawPlaque(context, left, top, width, height, label, visualSpec, font) {
-    context.fillStyle = visualSpec.cardFill;
-    drawRoundedRectPath(context, left, top, width, height, 18);
+  function drawOptionCard(context, left, top, width, height, title, selected, visualSpec) {
+    context.fillStyle = visualSpec.overlayOptionShadow;
+    drawRoundedRectPath(context, left, top + 3, width, height, 16);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
-    context.lineWidth = 1.1;
-    context.strokeStyle = visualSpec.cardBorder;
-    drawRoundedRectPath(context, left, top, width, height, 18);
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
-    context.lineWidth = 1;
-    context.strokeStyle = visualSpec.ornament;
-    context.beginPath();
-    context.moveTo(left + 16, top + height / 2);
-    context.lineTo(left + 30, top + height / 2);
-    context.moveTo(left + width - 30, top + height / 2);
-    context.lineTo(left + width - 16, top + height / 2);
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
-    context.fillStyle = visualSpec.accentText;
-    context.font = font || "bold 16px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(label, left + width / 2, top + height / 2);
-  }
-
-  function drawOptionCard(context, left, top, width, height, title, selected, visualSpec) {
-    context.fillStyle = selected ? visualSpec.cardAccent : visualSpec.cardFill;
+    context.fillStyle = selected ? visualSpec.cardAccent : visualSpec.overlayOptionFill;
     drawRoundedRectPath(context, left, top, width, height, 18);
     if (typeof context.fill === "function") {
       context.fill();
@@ -146,28 +83,67 @@ function createLanguageScene(options) {
     }
 
     context.fillStyle = selected ? visualSpec.titleColor : visualSpec.accentText;
-    context.font = selected ? "bold 18px sans-serif" : "17px sans-serif";
+    context.font = selected ? "bold 17px sans-serif" : "16px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(title, left + width / 2, top + height / 2);
   }
 
+  function drawShell(context, metrics, visualSpec) {
+    context.fillStyle = visualSpec.overlayShellFill;
+    drawRoundedRectPath(context, metrics.contentLeft, metrics.shellTop, metrics.contentWidth, metrics.shellHeight, 28);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = 1.1;
+    context.strokeStyle = visualSpec.overlayBorder;
+    drawRoundedRectPath(context, metrics.contentLeft, metrics.shellTop, metrics.contentWidth, metrics.shellHeight, 28);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+  }
+
+  function drawHeader(context, metrics, visualSpec, t) {
+    context.fillStyle = visualSpec.titleColor;
+    context.font = "bold 26px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(t("languagePage.title"), canvasWidth / 2, metrics.shellTop + 44);
+
+    context.fillStyle = visualSpec.bodyColor;
+    context.font = "13px sans-serif";
+    context.fillText(t("languagePage.subtitle"), canvasWidth / 2, metrics.shellTop + 76);
+  }
+
+  function drawFooterCard(context, metrics, visualSpec, t) {
+    context.fillStyle = visualSpec.overlayHeaderWashFill;
+    drawRoundedRectPath(context, metrics.optionLeft + 16, metrics.footerTop, metrics.optionWidth - 32, 46, 16);
+    if (typeof context.fill === "function") {
+      context.fill();
+    }
+
+    context.lineWidth = 1;
+    context.strokeStyle = visualSpec.cardBorder;
+    drawRoundedRectPath(context, metrics.optionLeft + 16, metrics.footerTop, metrics.optionWidth - 32, 46, 16);
+    if (typeof context.stroke === "function") {
+      context.stroke();
+    }
+
+    context.fillStyle = visualSpec.bodyColor;
+    context.font = "13px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      t("languagePage.applied"),
+      canvasWidth / 2,
+      metrics.footerTop + 23
+    );
+  }
+
   function drawBackdrop(context, metrics, visualSpec) {
-    context.fillStyle = visualSpec.background;
+    context.fillStyle = visualSpec.overlayMask;
     context.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    context.fillStyle = visualSpec.haloFill;
-    context.fillRect(22, 32, canvasWidth - 44, canvasHeight - 64);
-
-    context.fillStyle = visualSpec.panelFill;
-    context.fillRect(metrics.optionLeft - 14, 56, contentWidth + 28, 148);
-
-    context.fillStyle = visualSpec.headerWashFill;
-    context.fillRect(metrics.optionLeft + 4, 76, contentWidth - 8, 96);
-
-    context.fillStyle = visualSpec.dividerFill;
-    context.fillRect(metrics.optionLeft + 18, 92, 36, 2);
-    context.fillRect(metrics.optionLeft + metrics.optionWidth - 54, 92, 36, 2);
   }
 
   function draw(context, renderState) {
@@ -181,31 +157,20 @@ function createLanguageScene(options) {
       ? renderState.language
       : "zh-CN";
     const visualSpec = getVisualSpec(renderState);
-    const backPlaqueWidth = 82;
-
     drawBackdrop(context, metrics, visualSpec);
+    drawShell(context, metrics, visualSpec);
 
-    drawPlaque(
-      context,
-      metrics.backLeft,
-      metrics.backTop,
-      backPlaqueWidth,
-      metrics.backHeight,
-      t("common.back"),
-      visualSpec,
-      "15px sans-serif"
-    );
-
-    context.fillStyle = visualSpec.titleColor;
-    context.font = "bold 28px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(t("languagePage.title"), canvasWidth / 2, headerTop + 12);
+    drawHeader(context, metrics, visualSpec, t);
 
     context.fillStyle = visualSpec.helperFill;
-    context.font = "13px sans-serif";
-    context.textAlign = "left";
-    context.fillText(t("settings.languageLabel"), metrics.optionLeft, metrics.optionTop - 18);
+    context.font = "bold 15px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(
+      t("settings.languageLabel"),
+      metrics.optionLeft + metrics.optionWidth / 2,
+      metrics.sectionTop
+    );
 
     drawOptionCard(
       context,
@@ -229,27 +194,11 @@ function createLanguageScene(options) {
       visualSpec
     );
 
-    context.fillStyle = visualSpec.bodyColor;
-    context.font = "14px sans-serif";
-    context.textAlign = "center";
-    context.fillText(
-      t("languagePage.applied"),
-      canvasWidth / 2,
-      metrics.optionTop + metrics.optionHeight * 2 + metrics.optionGap + 40
-    );
+    drawFooterCard(context, metrics, visualSpec, t);
   }
 
   function hitTest(x, y) {
     const metrics = getMetrics();
-
-    if (
-      x >= metrics.backLeft &&
-      x <= metrics.backLeft + metrics.backWidth &&
-      y >= metrics.backTop &&
-      y <= metrics.backTop + metrics.backHeight
-    ) {
-      return { type: "action", value: "back" };
-    }
 
     if (
       x >= metrics.optionLeft &&
@@ -275,7 +224,8 @@ function createLanguageScene(options) {
   return {
     draw: draw,
     hitTest: hitTest,
-    getMetrics: getMetrics
+    getMetrics: getMetrics,
+    getVisualSpec: getVisualSpec
   };
 }
 

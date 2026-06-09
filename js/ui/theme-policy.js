@@ -5,6 +5,7 @@ const PLAYFUL_THEME = {
   selected: "#f7c6d9",
   related: "#f7ebc7",
   sameValue: "#dff4e8",
+  hintRelated: "#f1e6c8",
   toolFill: "#f8decb",
   toolText: "#7a3650",
   activeToolFill: "#f08ab0",
@@ -21,23 +22,24 @@ const PLAYFUL_THEME = {
 
 const PRO_THEME = {
   tone: "pro",
-  background: "#f1f3f2",
-  boardBase: "#fbfbf8",
-  selected: "#b7d7f0",
-  related: "#eef2f5",
-  sameValue: "#dce8f2",
-  toolFill: "#e7edf2",
-  toolText: "#23313f",
-  activeToolFill: "#34526b",
+  background: "#f2f1ea",
+  boardBase: "#fbfaf5",
+  selected: "#bfd5d0",
+  related: "#ece8de",
+  sameValue: "#dce5df",
+  hintRelated: "#e4e0d4",
+  toolFill: "#e6e0d6",
+  toolText: "#2f403c",
+  activeToolFill: "#556c67",
   activeToolText: "#ffffff",
-  feedbackFill: "#e9eef3",
-  feedbackText: "#304252",
-  issueFill: "#f0d5d5",
-  buttonHighlight: "#f9fbfc",
-  buttonShadow: "#94a0a8",
+  feedbackFill: "#ece8de",
+  feedbackText: "#43524d",
+  issueFill: "#ead8d2",
+  buttonHighlight: "#fcfbf7",
+  buttonShadow: "#8d9187",
   buttonDepth: "sharp",
-  surfaceTint: "#f7f8f4",
-  ornament: "#5a6b73"
+  surfaceTint: "#f5f3eb",
+  ornament: "#647670"
 };
 
 function getThemeByDifficulty(difficulty) {
