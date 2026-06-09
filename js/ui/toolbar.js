@@ -166,17 +166,6 @@ function createToolbar(options) {
     fillRoundedRect(context, keyLeft + 3, keyTop + 2, keyWidth - 6, 10, 8, active ? palette.activeGlow : palette.plaqueHighlight);
     strokeRoundedRect(context, keyLeft, keyTop, keyWidth, keyHeight - 4, 16, edge, active ? 1.5 : 1.1);
 
-    context.strokeStyle = active ? palette.activeText : palette.plaqueEdge;
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(keyLeft + 12, keyTop + (keyHeight - 4) / 2);
-    context.lineTo(keyLeft + 20, keyTop + (keyHeight - 4) / 2);
-    context.moveTo(keyLeft + keyWidth - 20, keyTop + (keyHeight - 4) / 2);
-    context.lineTo(keyLeft + keyWidth - 12, keyTop + (keyHeight - 4) / 2);
-    if (typeof context.stroke === "function") {
-      context.stroke();
-    }
-
     context.fillStyle = text;
     context.font = label.length > 4 ? "14px sans-serif" : "16px sans-serif";
     context.textAlign = "center";

@@ -1,7 +1,7 @@
 const { getDifficultyPolicy } = require("./difficulty-policy");
 const { isRelatedCell } = require("../utils/sudoku");
 
-function buildResult(mode, issueIndexes, t) {
+function buildResult(mode, issueIndexes, difficulty, t) {
   const sortedIndexes = issueIndexes.slice().sort(function (left, right) {
     return left - right;
   });
@@ -10,18 +10,22 @@ function buildResult(mode, issueIndexes, t) {
     : function (key) {
         return key;
       };
+  const issueKey = "check.hasIssueByDifficulty." + difficulty;
+  const cleanKey = "check.cleanByDifficulty." + difficulty;
+  const issueMessage = translate(issueKey);
+  const cleanMessage = translate(cleanKey);
 
   return {
     mode: mode,
     hasIssue: sortedIndexes.length > 0,
     message: sortedIndexes.length > 0
-      ? translate("check.hasIssue")
-      : translate("check.clean"),
+      ? (issueMessage === issueKey ? translate("check.hasIssue") : issueMessage)
+      : (cleanMessage === cleanKey ? translate("check.clean") : cleanMessage),
     issueIndexes: sortedIndexes
   };
 }
 
-function checkConflicts(game, t) {
+function checkConflicts(game, t, difficulty) {
   const issueIndexes = [];
 
   game.cells.forEach(function (cell) {
@@ -42,10 +46,10 @@ function checkConflicts(game, t) {
     }
   });
 
-  return buildResult("conflict", issueIndexes, t);
+  return buildResult("conflict", issueIndexes, difficulty || game.difficulty, t);
 }
 
-function checkAgainstSolution(game, t) {
+function checkAgainstSolution(game, t, difficulty) {
   const issueIndexes = game.cells
     .filter(function (cell) {
       if (!cell.value || cell.given) {
@@ -58,17 +62,17 @@ function checkAgainstSolution(game, t) {
       return cell.index;
     });
 
-  return buildResult("solution", issueIndexes, t);
+  return buildResult("solution", issueIndexes, difficulty || game.difficulty, t);
 }
 
 function runDifficultyCheck(game, difficulty, t) {
   const policy = getDifficultyPolicy(difficulty);
 
   if (policy.checkMode === "conflict") {
-    return checkConflicts(game, t);
+    return checkConflicts(game, t, difficulty);
   }
 
-  return checkAgainstSolution(game, t);
+  return checkAgainstSolution(game, t, difficulty);
 }
 
 module.exports = {

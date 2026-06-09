@@ -16,6 +16,7 @@ function cloneGame(game) {
     difficulty: game.difficulty,
     puzzle: game.puzzle,
     solution: game.solution,
+    techniques: Array.isArray(game.techniques) ? game.techniques.slice() : [],
     cells: game.cells.map(cloneCell),
     elapsedSeconds: game.elapsedSeconds,
     mistakes: game.mistakes,
@@ -30,6 +31,7 @@ function createGame(puzzle) {
     difficulty: puzzle.difficulty,
     puzzle: puzzle.puzzle,
     solution: puzzle.solution,
+    techniques: Array.isArray(puzzle.techniques) ? puzzle.techniques.slice() : [],
     cells: puzzle.puzzle.split("").map(function (value, index) {
       const isEmpty = value === "0";
 
@@ -159,6 +161,9 @@ function buildBoardView(game, selectedIndex, extraState) {
     ? extraState.issueIndexes
     : [];
   const hintTargetIndex = extraState ? extraState.hintTargetIndex : -1;
+  const hintRelatedIndexes = extraState && Array.isArray(extraState.hintRelatedIndexes)
+    ? extraState.hintRelatedIndexes
+    : [];
 
   return game.cells.map(function (cell) {
     const hasValue = cell.value !== EMPTY_CELL;
@@ -175,7 +180,8 @@ function buildBoardView(game, selectedIndex, extraState) {
       empty: !hasValue,
       hasNotes: hasNotes,
       issue: issueIndexes.indexOf(cell.index) >= 0,
-      hintTarget: cell.index === hintTargetIndex
+      hintTarget: cell.index === hintTargetIndex,
+      hintRelated: hintRelatedIndexes.indexOf(cell.index) >= 0
     };
   });
 }

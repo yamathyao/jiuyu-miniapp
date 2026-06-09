@@ -11,10 +11,16 @@ const {
   loadCurrentGame,
   saveCurrentGame,
   loadSettings,
-  saveSettings
+  saveSettings,
+  loadStats,
+  saveStats
 } = require("./services/storage");
 const { runDifficultyCheck } = require("./services/checker");
 const { getNextHint } = require("./services/hint-engine");
+const {
+  createCompletionSummary,
+  applyCompletionToStats
+} = require("./services/stats-service");
 const { createTranslator } = require("./i18n");
 const { getThemeByDifficulty } = require("./ui/theme-policy");
 const { createHomeScene } = require("./scene/home-scene");
@@ -24,11 +30,47 @@ const { createLanguageScene } = require("./scene/language-scene");
 const { createToolbar } = require("./ui/toolbar");
 const { getTouchPoint } = require("./utils/touch");
 
-function findPuzzleByDifficulty(difficulty) {
-  return puzzles.find(function (puzzle) {
-    return puzzle.difficulty === difficulty;
-  }) || puzzles[0];
+function buildPuzzlePoolByDifficulty() {
+  return puzzles.reduce(function (pool, puzzle) {
+    if (!pool[puzzle.difficulty]) {
+      pool[puzzle.difficulty] = [];
+    }
+
+    pool[puzzle.difficulty].push(puzzle);
+    return pool;
+  }, {});
 }
+
+function findPuzzleByDifficulty(difficulty, cursorByDifficulty) {
+  const poolByDifficulty = buildPuzzlePoolByDifficulty();
+  const difficultyPool = poolByDifficulty[difficulty];
+
+  if (!difficultyPool || difficultyPool.length === 0) {
+    return puzzles[0];
+  }
+
+  if (!cursorByDifficulty) {
+    return difficultyPool[0];
+  }
+
+  const nextIndex = cursorByDifficulty[difficulty] || 0;
+  cursorByDifficulty[difficulty] = (nextIndex + 1) % difficultyPool.length;
+  return difficultyPool[nextIndex];
+}
+
+function buildRecentSummary(stats, t) {
+  if (!stats || !stats.lastCompletedDifficulty || !stats.lastElapsedSeconds) {
+    return "";
+  }
+
+  return t("home.recentSummary", {
+    difficulty: t("difficulty." + stats.lastCompletedDifficulty),
+    time: String(stats.lastElapsedSeconds),
+    streak: String(stats.currentStreakDays || 0)
+  });
+}
+
+const DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED = true;
 
 function boot() {
   if (typeof wx === "undefined" || !wx.createCanvas) {
@@ -75,18 +117,29 @@ function boot() {
   let activeScreen = "home";
   let selectedDifficulty = settings.preferredDifficulty;
   let difficultyPickerOpen = false;
+  let languagePickerOpen = false;
   let language = settings.language;
+  const puzzleCursorByDifficulty = {};
   let t = createTranslator(language);
   let game = restoredSession.game;
   let selectedIndex = restoredSession.selectedIndex;
   let noteMode = restoredSession.noteMode;
+  let stats = loadStats();
+  let hintCount = 0;
+  let checkCount = 0;
+  let mistakeCount = 0;
+  let completionVisible = false;
+  let statsOverlayVisible = false;
+  let completionSummary = null;
   let feedbackMessage = "";
   let feedbackType = "info";
   let issueIndexes = [];
   let settingsEntrySource = "home";
   let hintState = {
     currentLevel: null,
-    targetIndex: -1
+    targetIndex: -1,
+    relatedIndexes: [],
+    progress: null
   };
 
   const homeScene = createHomeScene({
@@ -153,58 +206,225 @@ function boot() {
     });
   }
 
+  function applyGameSnapshot(nextGame, nextSelectedIndex, nextNoteMode) {
+    game = nextGame;
+    selectedIndex = nextSelectedIndex;
+    noteMode = nextNoteMode;
+    persistGameState();
+  }
+
+  function switchScreen(nextScreen) {
+    activeScreen = nextScreen;
+    draw();
+  }
+
   function clearFeedbackState() {
     feedbackMessage = "";
     feedbackType = "info";
     issueIndexes = [];
     hintState = {
       currentLevel: null,
-      targetIndex: -1
+      targetIndex: -1,
+      relatedIndexes: [],
+      progress: null
     };
   }
 
-  function startNewGame() {
-    const puzzle = findPuzzleByDifficulty(selectedDifficulty);
-    game = createGame(puzzle);
-    selectedIndex = -1;
-    noteMode = false;
+  function resetCompletionState() {
+    completionVisible = false;
+    statsOverlayVisible = false;
+    completionSummary = null;
+    hintCount = 0;
+    checkCount = 0;
+    mistakeCount = 0;
+  }
+
+  function isGameCompleted(nextGame) {
+    return nextGame.cells.every(function (cell) {
+      return cell.value === nextGame.solution[cell.index];
+    });
+  }
+
+  function openCompletionState() {
+    const summary = createCompletionSummary({
+      difficulty: game.difficulty,
+      elapsedSeconds: game.elapsedSeconds,
+      hintCount: hintCount,
+      checkCount: checkCount,
+      mistakeCount: mistakeCount,
+      completedAt: new Date().toISOString(),
+      t: t
+    });
+
+    completionSummary = summary;
+    stats = applyCompletionToStats(stats, summary);
+    saveStats(stats);
+    completionVisible = true;
+    statsOverlayVisible = false;
+  }
+
+  function createNearCompleteSession(difficulty) {
+    const puzzle = findPuzzleByDifficulty(difficulty, puzzleCursorByDifficulty);
+    const nextGame = createGame(puzzle);
+    let lastEditableIndex = -1;
+
+    nextGame.cells.forEach(function (cell) {
+      if (!cell.given) {
+        lastEditableIndex = cell.index;
+      }
+    });
+
+    nextGame.cells.forEach(function (cell) {
+      if (!cell.given && cell.index !== lastEditableIndex) {
+        cell.value = nextGame.solution[cell.index];
+      }
+    });
+
+    nextGame.elapsedSeconds = 428;
+
+    return {
+      game: nextGame,
+      selectedIndex: lastEditableIndex,
+      noteMode: false
+    };
+  }
+
+  function loadDebugNearCompleteGame() {
+    const session = createNearCompleteSession(selectedDifficulty);
+
+    resetCompletionState();
     clearFeedbackState();
-    persistGameState();
-    activeScreen = "board";
+    applyGameSnapshot(session.game, session.selectedIndex, session.noteMode);
+    switchScreen("board");
+  }
+
+  function startNewGame() {
+    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
+    resetCompletionState();
+    clearFeedbackState();
+    applyGameSnapshot(createGame(puzzle), -1, false);
+    switchScreen("board");
   }
 
   function applyDifficultySelection(nextDifficulty) {
     if (selectedDifficulty === nextDifficulty) {
-      return;
+      return false;
     }
 
     selectedDifficulty = nextDifficulty;
-    const puzzle = findPuzzleByDifficulty(selectedDifficulty);
-    game = createGame(puzzle);
-    selectedIndex = -1;
-    noteMode = false;
+    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
     clearFeedbackState();
     feedbackMessage = t("settings.difficultyChanged", {
       difficulty: t("difficulty." + selectedDifficulty)
     });
     feedbackType = "info";
-    persistGameState();
+    applyGameSnapshot(createGame(puzzle), -1, false);
     persistSettingsState();
+    return true;
   }
 
   function continueGame() {
-    activeScreen = "board";
     clearFeedbackState();
+    switchScreen("board");
   }
 
   function openSettings(source) {
     difficultyPickerOpen = false;
+    languagePickerOpen = false;
     settingsEntrySource = source;
-    activeScreen = "settings";
+    switchScreen("settings");
   }
 
   function goBackFromSettings() {
-    activeScreen = settingsEntrySource === "board" ? "board" : "home";
+    switchScreen(settingsEntrySource === "board" ? "board" : "home");
+  }
+
+  function handleHomeAction(homeAction) {
+    if (!homeAction) {
+      return false;
+    }
+
+    if (homeAction.type === "difficulty") {
+      selectedDifficulty = homeAction.value;
+      difficultyPickerOpen = false;
+      persistSettingsState();
+      switchScreen("home");
+      return true;
+    }
+
+    if (homeAction.type !== "action") {
+      return false;
+    }
+
+    if (homeAction.value === "toggle-difficulty-picker") {
+      difficultyPickerOpen = !difficultyPickerOpen;
+      switchScreen("home");
+      return true;
+    }
+
+    if (homeAction.value === "continue" && hasSavedGame) {
+      difficultyPickerOpen = false;
+      continueGame();
+      return true;
+    }
+
+    if (homeAction.value === "new-game") {
+      difficultyPickerOpen = false;
+      startNewGame();
+      return true;
+    }
+
+    if (homeAction.value === "settings") {
+      openSettings("home");
+      return true;
+    }
+
+    if (homeAction.value === "debug-near-complete" && DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED) {
+      loadDebugNearCompleteGame();
+      return true;
+    }
+
+    return false;
+  }
+
+  function handleSettingsAction(settingsAction) {
+    if (!settingsAction) {
+      return false;
+    }
+
+    if (settingsAction.type === "action" && settingsAction.value === "back") {
+      goBackFromSettings();
+      return true;
+    }
+
+    if (settingsAction.type === "action" && settingsAction.value === "toggle-language-picker") {
+      languagePickerOpen = !languagePickerOpen;
+      switchScreen("settings");
+      return true;
+    }
+
+    if (settingsAction.type === "language") {
+      language = settingsAction.value;
+      t = createTranslator(language);
+      languagePickerOpen = false;
+      persistSettingsState();
+      switchScreen("settings");
+      return true;
+    }
+
+    if (settingsAction.type === "action" && settingsAction.value === "restart-game") {
+      startNewGame();
+      return true;
+    }
+
+    if (settingsAction.type === "difficulty") {
+      applyDifficultySelection(settingsAction.value);
+      languagePickerOpen = false;
+      switchScreen("settings");
+      return true;
+    }
+
+    return false;
   }
 
   function drawHome() {
@@ -213,6 +433,7 @@ function boot() {
       hasSavedGame: hasSavedGame,
       selectedDifficulty: selectedDifficulty,
       difficultyPickerOpen: difficultyPickerOpen,
+      recentSummary: buildRecentSummary(stats, t),
       t: t
     });
   }
@@ -224,15 +445,14 @@ function boot() {
       language: language,
       t: t
     });
-  }
 
-  function drawLanguage() {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    languageScene.draw(context, {
-      selectedDifficulty: selectedDifficulty,
-      language: language,
-      t: t
-    });
+    if (languagePickerOpen) {
+      languageScene.draw(context, {
+        selectedDifficulty: selectedDifficulty,
+        language: language,
+        t: t
+      });
+    }
   }
 
   function drawBoard() {
@@ -240,7 +460,8 @@ function boot() {
     const theme = getThemeByDifficulty(difficulty);
     const cells = buildBoardView(game, selectedIndex, {
       issueIndexes: issueIndexes,
-      hintTargetIndex: hintState.targetIndex
+      hintTargetIndex: hintState.targetIndex,
+      hintRelatedIndexes: hintState.relatedIndexes
     });
 
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -250,6 +471,12 @@ function boot() {
       theme: Object.assign({}, theme, { t: t }),
       feedbackMessage: feedbackMessage,
       feedbackType: feedbackType,
+      hintProgress: hintState.progress,
+      completionSummary: completionSummary,
+      completionVisible: completionVisible,
+      statsOverlayVisible: statsOverlayVisible,
+      statsSnapshot: stats,
+      t: t,
       title: "方庭九屿",
       difficultyLabel: t("difficulty." + difficulty),
       settingsLabel: t("settings.title")
@@ -268,11 +495,6 @@ function boot() {
       return;
     }
 
-    if (activeScreen === "language") {
-      drawLanguage();
-      return;
-    }
-
     drawBoard();
   }
 
@@ -284,100 +506,77 @@ function boot() {
     }
 
     if (activeScreen === "home") {
-      const homeAction = homeScene.hitTest(point.x, point.y, {
+      handleHomeAction(homeScene.hitTest(point.x, point.y, {
         hasSavedGame: hasSavedGame,
         selectedDifficulty: selectedDifficulty,
-        difficultyPickerOpen: difficultyPickerOpen
-      });
-
-      if (!homeAction) {
-        return;
-      }
-
-      if (homeAction.type === "difficulty") {
-        selectedDifficulty = homeAction.value;
-        difficultyPickerOpen = false;
-        persistSettingsState();
-        draw();
-        return;
-      }
-
-      if (homeAction.type === "action" && homeAction.value === "toggle-difficulty-picker") {
-        difficultyPickerOpen = !difficultyPickerOpen;
-        draw();
-        return;
-      }
-
-      if (homeAction.type === "action" && homeAction.value === "continue" && hasSavedGame) {
-        difficultyPickerOpen = false;
-        continueGame();
-        draw();
-        return;
-      }
-
-      if (homeAction.type === "action" && homeAction.value === "new-game") {
-        difficultyPickerOpen = false;
-        startNewGame();
-        draw();
-        return;
-      }
-
-      if (homeAction.type === "action" && homeAction.value === "settings") {
-        openSettings("home");
-        draw();
-        return;
-      }
-
-      draw();
+        difficultyPickerOpen: difficultyPickerOpen,
+        debugShortcutEnabled: DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED
+      }));
       return;
     }
 
     if (activeScreen === "settings") {
-      const settingsAction = settingsScene.hitTest(point.x, point.y);
+      if (languagePickerOpen) {
+        const languageAction = languageScene.hitTest(point.x, point.y);
+        const languageMetrics = languageScene.getMetrics();
 
-      if (!settingsAction) {
+        if (languageAction) {
+          handleSettingsAction(languageAction);
+          return;
+        }
+
+        if (
+          point.x < languageMetrics.shellLeft ||
+          point.x > languageMetrics.shellRight ||
+          point.y < languageMetrics.shellTop ||
+          point.y > languageMetrics.shellBottom
+        ) {
+          languagePickerOpen = false;
+          switchScreen("settings");
+        }
         return;
       }
 
-      if (settingsAction.type === "action" && settingsAction.value === "back") {
-        goBackFromSettings();
-        draw();
-        return;
-      }
-
-      if (settingsAction.type === "action" && settingsAction.value === "language") {
-        activeScreen = "language";
-        draw();
-        return;
-      }
-
-      if (settingsAction.type === "difficulty") {
-        applyDifficultySelection(settingsAction.value);
-        draw();
-        return;
-      }
-
+      handleSettingsAction(settingsScene.hitTest(point.x, point.y, {}));
       return;
     }
 
-    if (activeScreen === "language") {
-      const languageAction = languageScene.hitTest(point.x, point.y);
+    if (statsOverlayVisible) {
+      const statsAction = boardScene.hitTestStatsOverlayAction(point.x, point.y, {
+        statsOverlayVisible: statsOverlayVisible
+      });
 
-      if (!languageAction) {
+      if (statsAction && statsAction.value === "back-to-completion") {
+        statsOverlayVisible = false;
+        switchScreen("board");
+      }
+      return;
+    }
+
+    if (completionVisible) {
+      const completionAction = boardScene.hitTestCompletionAction(point.x, point.y, {
+        completionVisible: completionVisible,
+        completionSummary: completionSummary
+      });
+
+      if (!completionAction) {
         return;
       }
 
-      if (languageAction.type === "action" && languageAction.value === "back") {
-        activeScreen = "settings";
-        draw();
+      if (completionAction.value === "new-game") {
+        startNewGame();
         return;
       }
 
-      if (languageAction.type === "language") {
-        language = languageAction.value;
-        t = createTranslator(language);
-        persistSettingsState();
-        draw();
+      if (completionAction.value === "home") {
+        resetCompletionState();
+        switchScreen("home");
+        return;
+      }
+
+      if (completionAction.value === "stats") {
+        statsOverlayVisible = true;
+        switchScreen("board");
       }
 
       return;
@@ -387,18 +586,18 @@ function boot() {
 
     if (headerAction && headerAction.type === "action" && headerAction.value === "settings") {
       openSettings("board");
-      draw();
       return;
     }
 
     const hitCellIndex = boardScene.getCellIndexByPoint(point.x, point.y);
 
     if (hitCellIndex >= 0) {
-      selectedIndex = hitCellIndex;
       issueIndexes = [];
       hintState.targetIndex = -1;
-      persistGameState();
-      draw();
+      hintState.relatedIndexes = [];
+      hintState.progress = null;
+      applyGameSnapshot(game, hitCellIndex, noteMode);
+      switchScreen("board");
       return;
     }
 
@@ -414,19 +613,20 @@ function boot() {
         : applyInputValue(game, selectedIndex, toolbarAction.value);
 
       if (nextGame !== game) {
-        game = nextGame;
         clearFeedbackState();
-        persistGameState();
+        applyGameSnapshot(nextGame, selectedIndex, noteMode);
+        if (isGameCompleted(nextGame)) {
+          openCompletionState();
+        }
       }
 
-      draw();
+      switchScreen("board");
       return;
     }
 
     if (toolbarAction.type === "tool") {
       if (toolbarAction.value === "note") {
-        noteMode = !noteMode;
-        persistGameState();
+        applyGameSnapshot(game, selectedIndex, !noteMode);
       }
 
       if (toolbarAction.value === "undo") {
@@ -436,10 +636,8 @@ function boot() {
           undoResult.game !== game ||
           undoResult.selectedIndex !== selectedIndex
         ) {
-          game = undoResult.game;
-          selectedIndex = undoResult.selectedIndex;
           clearFeedbackState();
-          persistGameState();
+          applyGameSnapshot(undoResult.game, undoResult.selectedIndex, noteMode);
         }
       }
 
@@ -447,32 +645,40 @@ function boot() {
         const nextGame = eraseCellContent(game, selectedIndex, noteMode);
 
         if (nextGame !== game) {
-          game = nextGame;
           clearFeedbackState();
-          persistGameState();
+          applyGameSnapshot(nextGame, selectedIndex, noteMode);
         }
       }
 
       if (toolbarAction.value === "hint") {
+        hintCount += 1;
         const localizedHint = getNextHint(game, game.difficulty, hintState, t);
         feedbackMessage = localizedHint.message;
         feedbackType = "info";
         issueIndexes = [];
         hintState = {
           currentLevel: localizedHint.level,
-          targetIndex: localizedHint.targetIndex
+          targetIndex: localizedHint.targetIndex,
+          relatedIndexes: localizedHint.relatedIndexes || [],
+          progress: localizedHint.progress || null
         };
       }
 
       if (toolbarAction.value === "check") {
+        checkCount += 1;
         const result = runDifficultyCheck(game, game.difficulty, t);
         feedbackMessage = result.message;
         feedbackType = result.hasIssue ? "warning" : "success";
         issueIndexes = result.issueIndexes;
         hintState.targetIndex = -1;
+        hintState.relatedIndexes = [];
+        hintState.progress = null;
+        if (result.hasIssue) {
+          mistakeCount += 1;
+        }
       }
 
-      draw();
+      switchScreen("board");
     }
   });
 

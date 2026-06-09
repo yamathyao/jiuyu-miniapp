@@ -1,33 +1,12 @@
-const puzzles = [
-  {
-    id: "beginner-001",
-    difficulty: "beginner",
-    puzzle: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
-    solution: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
-    techniques: ["naked-single", "hidden-single"]
-  },
-  {
-    id: "intermediate-001",
-    difficulty: "intermediate",
-    puzzle: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
-    solution: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
-    techniques: ["naked-single", "hidden-single"]
-  },
-  {
-    id: "skilled-001",
-    difficulty: "skilled",
-    puzzle: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
-    solution: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
-    techniques: ["naked-single", "hidden-single"]
-  },
-  {
-    id: "expert-001",
-    difficulty: "expert",
-    puzzle: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
-    solution: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
-    techniques: ["naked-single", "hidden-single"]
-  }
-];
+const { beginnerPuzzles } = require("./puzzles-beginner");
+const { intermediatePuzzles } = require("./puzzles-intermediate");
+const { skilledPuzzles } = require("./puzzles-skilled");
+const { expertPuzzles } = require("./puzzles-expert");
+
+const puzzles = beginnerPuzzles
+  .concat(intermediatePuzzles)
+  .concat(skilledPuzzles)
+  .concat(expertPuzzles);
 
 module.exports = {
   puzzles
