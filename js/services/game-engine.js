@@ -10,6 +10,25 @@ function cloneCell(cell) {
   };
 }
 
+function cloneHintMetadata(hint) {
+  if (!hint || typeof hint !== "object") {
+    return null;
+  }
+
+  return {
+    primaryTechnique: typeof hint.primaryTechnique === "string"
+      ? hint.primaryTechnique
+      : "",
+    targetIndex: Number.isInteger(hint.targetIndex) ? hint.targetIndex : -1,
+    relatedIndexes: Array.isArray(hint.relatedIndexes)
+      ? hint.relatedIndexes.slice()
+      : [],
+    context: hint.context && typeof hint.context === "object"
+      ? Object.assign({}, hint.context)
+      : null
+  };
+}
+
 function cloneGame(game) {
   return {
     puzzleId: game.puzzleId,
@@ -17,6 +36,7 @@ function cloneGame(game) {
     puzzle: game.puzzle,
     solution: game.solution,
     techniques: Array.isArray(game.techniques) ? game.techniques.slice() : [],
+    hint: cloneHintMetadata(game.hint),
     cells: game.cells.map(cloneCell),
     elapsedSeconds: game.elapsedSeconds,
     mistakes: game.mistakes,
@@ -32,6 +52,7 @@ function createGame(puzzle) {
     puzzle: puzzle.puzzle,
     solution: puzzle.solution,
     techniques: Array.isArray(puzzle.techniques) ? puzzle.techniques.slice() : [],
+    hint: cloneHintMetadata(puzzle.hint),
     cells: puzzle.puzzle.split("").map(function (value, index) {
       const isEmpty = value === "0";
 

@@ -4,14 +4,30 @@ const expertPuzzles = [
     difficulty: "expert",
     puzzle: "000000012000000003002300000070050000000000000000040080000009600400000000830000000",
     solution: "653974812184265793792318465376852941548197236921643587215439678467581329839726154",
-    techniques: ["x-wing", "xy-wing"]
+    techniques: ["x-wing", "xy-wing"],
+    hint: {
+      primaryTechnique: "x-wing",
+      targetIndex: 0,
+      relatedIndexes: [1, 2, 9, 18],
+      context: {
+        pattern: "row-column"
+      }
+    }
   },
   {
     id: "expert-002",
     difficulty: "expert",
     puzzle: "000000032000000008002800000040060000000000000000090040000002700500000000420000000",
     solution: "814976532659123478732854169948265317275341896163798245391682754587439621426517983",
-    techniques: ["x-wing", "xy-wing"]
+    techniques: ["x-wing", "xy-wing"],
+    hint: {
+      primaryTechnique: "xy-wing",
+      targetIndex: 55,
+      relatedIndexes: [56, 54],
+      context: {
+        pattern: "pivot-wing"
+      }
+    }
   },
   {
     id: "expert-003",

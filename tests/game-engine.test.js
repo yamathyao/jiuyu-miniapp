@@ -36,6 +36,9 @@ const {
   applyCompletionToStats
 } = require("../js/services/stats-service");
 const {
+  validatePuzzle
+} = require("../scripts/validate-puzzles");
+const {
   getDifficultyPolicy
 } = require("../js/services/difficulty-policy");
 const {
@@ -122,6 +125,50 @@ test("buildBoardView carries issue and hint target flags for scene rendering", f
   assert.equal(boardView[11].hintTarget, true);
   assert.equal(boardView[0].hintRelated, true);
   assert.equal(boardView[36].hintRelated, true);
+});
+
+test("createGame copies advanced hint metadata from the puzzle", function () {
+  const puzzle = {
+    id: "expert-metadata",
+    difficulty: "expert",
+    puzzle: "000000012000000003002300000070050000000000000000040080000009600400000000830000000",
+    solution: "653974812184265793792318465376852941548197236921643587215439678467581329839726154",
+    techniques: ["x-wing", "xy-wing"],
+    hint: {
+      primaryTechnique: "x-wing",
+      targetIndex: 0,
+      relatedIndexes: [1, 2, 9, 18],
+      context: {
+        pattern: "row-column"
+      }
+    }
+  };
+
+  const game = createGame(puzzle);
+
+  assert.deepEqual(game.hint, puzzle.hint);
+});
+
+test("editable operations keep advanced hint metadata intact", function () {
+  const puzzle = {
+    id: "skilled-metadata",
+    difficulty: "skilled",
+    puzzle: "030000000000500003097030000800005007070080010900700008000020870200007000000000050",
+    solution: "435269781682571493197834562826195347374682915951743628519326874248957136763418259",
+    techniques: ["naked-pair", "box-line-reduction"],
+    hint: {
+      primaryTechnique: "naked-pair",
+      targetIndex: 9,
+      relatedIndexes: [],
+      context: {
+        pattern: "pair"
+      }
+    }
+  };
+
+  const changed = applyInputValue(createGame(puzzle), 1, "4");
+
+  assert.deepEqual(changed.hint, puzzle.hint);
 });
 
 test("minigame entry files exist", function () {
@@ -458,7 +505,14 @@ test("hint engine returns localized messages", function () {
   const expertGame = createGame(expertPuzzle);
   const skilledGame = createGame(skilledPuzzle);
   const boxLineSkilledGame = Object.assign({}, skilledGame, {
-    techniques: ["box-line-reduction"]
+    hint: {
+      primaryTechnique: "box-line-reduction",
+      targetIndex: 0,
+      relatedIndexes: [9, 18],
+      context: {
+        pattern: "box-line"
+      }
+    }
   });
   const zh = createTranslator("zh-CN");
   const en = createTranslator("en");
@@ -509,7 +563,14 @@ test("expert technique hint wording changes with the tagged technique", function
   });
   const expertGame = createGame(expertPuzzle);
   const xyWingGame = Object.assign({}, expertGame, {
-    techniques: ["xy-wing"]
+    hint: {
+      primaryTechnique: "xy-wing",
+      targetIndex: 55,
+      relatedIndexes: [56, 54],
+      context: {
+        pattern: "pivot-wing"
+      }
+    }
   });
   const en = createTranslator("en");
 
@@ -529,10 +590,24 @@ test("skilled hint target selection can shift with the tagged technique", functi
   });
   const baseGame = createGame(skilledPuzzle);
   const nakedPairGame = Object.assign({}, baseGame, {
-    techniques: ["naked-pair"]
+    hint: {
+      primaryTechnique: "naked-pair",
+      targetIndex: 9,
+      relatedIndexes: [],
+      context: {
+        pattern: "pair"
+      }
+    }
   });
   const boxLineGame = Object.assign({}, baseGame, {
-    techniques: ["box-line-reduction"]
+    hint: {
+      primaryTechnique: "box-line-reduction",
+      targetIndex: 0,
+      relatedIndexes: [9, 18],
+      context: {
+        pattern: "box-line"
+      }
+    }
   });
 
   const nakedPairHint = getNextHint(nakedPairGame, "skilled", {
@@ -556,13 +631,34 @@ test("advanced hints can return related cell indexes for multi-cell highlighting
     return puzzle.difficulty === "expert";
   });
   const boxLineGame = Object.assign({}, createGame(skilledPuzzle), {
-    techniques: ["box-line-reduction"]
+    hint: {
+      primaryTechnique: "box-line-reduction",
+      targetIndex: 0,
+      relatedIndexes: [9, 18],
+      context: {
+        pattern: "box-line"
+      }
+    }
   });
   const xWingGame = Object.assign({}, createGame(expertPuzzle), {
-    techniques: ["x-wing"]
+    hint: {
+      primaryTechnique: "x-wing",
+      targetIndex: 0,
+      relatedIndexes: [1, 2, 9, 18],
+      context: {
+        pattern: "row-column"
+      }
+    }
   });
   const xyWingGame = Object.assign({}, createGame(expertPuzzle), {
-    techniques: ["xy-wing"]
+    hint: {
+      primaryTechnique: "xy-wing",
+      targetIndex: 55,
+      relatedIndexes: [56, 54],
+      context: {
+        pattern: "pivot-wing"
+      }
+    }
   });
 
   const boxLineHint = getNextHint(boxLineGame, "skilled", {
@@ -582,6 +678,72 @@ test("advanced hints can return related cell indexes for multi-cell highlighting
   assert.deepEqual(xWingHint.relatedIndexes, [1, 2, 9, 18]);
   assert.equal(xyWingHint.targetIndex, 55);
   assert.deepEqual(xyWingHint.relatedIndexes, [56, 54]);
+});
+
+test("getNextHint prefers authoritative metadata for advanced puzzles", function () {
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-001";
+  });
+  const hint = getNextHint(createGame(expertPuzzle), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  });
+
+  assert.equal(hint.technique, "x-wing");
+  assert.equal(hint.targetIndex, 0);
+  assert.deepEqual(hint.relatedIndexes, [1, 2, 9, 18]);
+});
+
+test("getNextHint falls back when advanced metadata is missing", function () {
+  const skilledPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-003";
+  });
+  const game = createGame(skilledPuzzle);
+  const hint = getNextHint(game, "skilled", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  });
+
+  assert.equal(hint.technique, "naked-pair");
+  assert.equal(hint.targetIndex, 9);
+});
+
+test("getNextHint falls back safely when advanced metadata points at a given cell", function () {
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-001";
+  });
+  const brokenGame = createGame(Object.assign({}, expertPuzzle, {
+    hint: {
+      primaryTechnique: "x-wing",
+      targetIndex: 7,
+      relatedIndexes: [1, 2, 9, 18]
+    }
+  }));
+  const hint = getNextHint(brokenGame, "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  });
+
+  assert.notEqual(hint.targetIndex, 6);
+  assert.equal(hint.level, "technique");
+});
+
+test("advanced hint copy follows hint.primaryTechnique instead of techniques[0]", function () {
+  const zh = createTranslator("zh-CN");
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-002";
+  });
+  const hint = getNextHint(createGame(expertPuzzle), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+
+  assert.equal(hint.technique, "xy-wing");
+  assert.equal(hint.message, "技巧提示：XY-Wing。先看互相牵制的枢纽格。");
 });
 
 test("getThemeByDifficulty groups beginner and intermediate into a playful theme", function () {
@@ -1534,6 +1696,30 @@ test("loadStats backfills newer stat fields for older saved snapshots", function
   assert.equal(loaded.totalCompleted, 3);
   assert.equal(loaded.bestTimeByDifficulty.beginner, 120);
   assert.equal(loaded.hintCountByDifficulty.beginner, 0);
+});
+
+test("validatePuzzle reports invalid advanced hint metadata", function () {
+  const errors = [];
+  const seenIds = {};
+
+  validatePuzzle({
+    id: "expert-invalid",
+    difficulty: "expert",
+    puzzle: "000000012000000003002300000070050000000000000000040080000009600400000000830000000",
+    solution: "653974812184265793792318465376852941548197236921643587215439678467581329839726154",
+    techniques: ["x-wing"],
+    hint: {
+      primaryTechnique: "xy-wing",
+      targetIndex: 0,
+      relatedIndexes: [0, 99]
+    }
+  }, seenIds, errors);
+
+  assert.deepEqual(errors, [
+    "expert-invalid: hint.primaryTechnique must be included in techniques.",
+    "expert-invalid: hint.relatedIndexes cannot contain targetIndex.",
+    "expert-invalid: hint.relatedIndexes[1] must be an integer from 0 to 80."
+  ]);
 });
 
 test("puzzle data contains all four supported difficulties", function () {

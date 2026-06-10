@@ -36,6 +36,44 @@ function getCandidateValues(game, targetIndex) {
   });
 }
 
+function isEditableIndex(game, index) {
+  return Number.isInteger(index) &&
+    index >= 0 &&
+    index < game.cells.length &&
+    !game.cells[index].given &&
+    !game.cells[index].value;
+}
+
+function getAdvancedHintSeed(game) {
+  const hint = game && game.hint;
+
+  if (!hint || typeof hint.primaryTechnique !== "string") {
+    return null;
+  }
+
+  if (!isEditableIndex(game, hint.targetIndex)) {
+    return null;
+  }
+
+  const relatedIndexes = Array.isArray(hint.relatedIndexes)
+    ? hint.relatedIndexes.filter(function (index) {
+        return Number.isInteger(index) &&
+          index >= 0 &&
+          index < game.cells.length &&
+          index !== hint.targetIndex;
+      })
+    : [];
+
+  return {
+    technique: hint.primaryTechnique,
+    targetIndex: hint.targetIndex,
+    relatedIndexes: relatedIndexes,
+    context: hint.context && typeof hint.context === "object"
+      ? Object.assign({}, hint.context)
+      : null
+  };
+}
+
 function findHintTargetByTechnique(game, technique) {
   if (technique === "naked-pair") {
     let bestIndex = -1;
@@ -269,11 +307,20 @@ function buildHintMessage(level, difficulty, hintMeta, t) {
 
 function getNextHint(game, difficulty, hintState, t) {
   const policy = getDifficultyPolicy(difficulty);
-  const technique = Array.isArray(game.techniques) && game.techniques.length > 0
-    ? game.techniques[0]
-    : "naked-single";
-  const targetIndex = findHintTarget(game, technique);
-  const relatedIndexes = getRelatedIndexesByTechnique(game, targetIndex, technique);
+  const advancedSeed = (difficulty === "skilled" || difficulty === "expert")
+    ? getAdvancedHintSeed(game)
+    : null;
+  const technique = advancedSeed
+    ? advancedSeed.technique
+    : Array.isArray(game.techniques) && game.techniques.length > 0
+      ? game.techniques[0]
+      : "naked-single";
+  const targetIndex = advancedSeed
+    ? advancedSeed.targetIndex
+    : findHintTarget(game, technique);
+  const relatedIndexes = advancedSeed
+    ? advancedSeed.relatedIndexes
+    : getRelatedIndexesByTechnique(game, targetIndex, technique);
   const currentLevelIndex = hintState.currentLevel
     ? policy.hintLevels.indexOf(hintState.currentLevel)
     : -1;

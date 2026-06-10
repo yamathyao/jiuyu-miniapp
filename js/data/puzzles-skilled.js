@@ -4,14 +4,30 @@ const skilledPuzzles = [
     difficulty: "skilled",
     puzzle: "030000000000500003097030000800005007070080010900700008000020870200007000000000050",
     solution: "435269781682571493197834562826195347374682915951743628519326874248957136763418259",
-    techniques: ["naked-pair", "box-line-reduction"]
+    techniques: ["naked-pair", "box-line-reduction"],
+    hint: {
+      primaryTechnique: "naked-pair",
+      targetIndex: 9,
+      relatedIndexes: [],
+      context: {
+        pattern: "pair"
+      }
+    }
   },
   {
     id: "skilled-002",
     difficulty: "skilled",
     puzzle: "030000000000500003097030000800005007070080010900700008000020870200007000000000050",
     solution: "435269781682571493197834562826195347374682915951743628519326874248957136763418259",
-    techniques: ["naked-pair", "box-line-reduction"]
+    techniques: ["naked-pair", "box-line-reduction"],
+    hint: {
+      primaryTechnique: "box-line-reduction",
+      targetIndex: 0,
+      relatedIndexes: [9, 18],
+      context: {
+        pattern: "box-line"
+      }
+    }
   },
   {
     id: "skilled-003",
