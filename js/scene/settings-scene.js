@@ -56,10 +56,11 @@ function drawWrappedText(context, text, left, top, maxWidth, lineHeight, maxLine
 function createSettingsScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
+  const verticalOffset = options.verticalOffset != null ? options.verticalOffset : 32;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const headerTop = 76;
-  const panelTop = 130;
+  const headerTop = 76 + verticalOffset;
+  const panelTop = 130 + verticalOffset;
   const heroHeight = 92;
   const sectionGap = 28;
   const sectionTitleToCardGap = 22;
@@ -249,11 +250,14 @@ function createSettingsScene(options) {
   }
 
   function drawLanguageCard(context, metrics, visualSpec, renderState, t) {
-    const language = renderState && renderState.language === "en"
-      ? "en"
+    const language = renderState && renderState.language
+      ? renderState.language
       : "zh-CN";
-    const isEnglish = language === "en";
-    const languageLabel = isEnglish ? t("settings.languageEn") : t("settings.languageZh");
+    const languageLabel = language === "en"
+      ? t("settings.languageEn")
+      : language === "ja"
+        ? t("settings.languageJa")
+        : t("settings.languageZh");
 
     context.fillStyle = visualSpec.helperFill;
     context.font = "bold 15px sans-serif";

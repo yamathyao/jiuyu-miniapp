@@ -164,13 +164,22 @@ function drawDifficultyBadge(context, left, top, width, height, label, selected,
 function createHomeScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
+  const verticalOffset = options.verticalOffset != null ? options.verticalOffset : 32;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const brandTop = 106;
-  const primaryButtonTop = 242;
+  const brandBlockOffset = verticalOffset + 16;
+  const brandTop = 106 + brandBlockOffset;
+  const brandFrameTop = 38 + brandBlockOffset;
+  const brandPanelTop = 46 + brandBlockOffset;
+  const brandCoreTop = 56 + brandBlockOffset;
+  const brandHighlightTop = 66 + brandBlockOffset;
+  const brandDividerTop = 74 + brandBlockOffset;
+  const primaryButtonTop = 242 + verticalOffset;
   const buttonHeight = 58;
   const secondaryButtonTop = primaryButtonTop + buttonHeight + 16;
-  const difficultyTop = secondaryButtonTop + buttonHeight + 34;
+  const returnCardTop = secondaryButtonTop + buttonHeight + 14;
+  const returnCardHeight = 92;
+  const difficultyTop = returnCardTop + returnCardHeight + 28;
   const difficultyHeight = 54;
   const difficultyGap = 12;
   const difficultyWidth = contentWidth;
@@ -207,12 +216,21 @@ function createHomeScene(options) {
     return {
       brandTitle: "方庭九屿",
       brandTop: brandTop,
+      brandFrameTop: brandFrameTop,
+      brandPanelTop: brandPanelTop,
+      brandCoreTop: brandCoreTop,
+      brandHighlightTop: brandHighlightTop,
+      brandDividerTop: brandDividerTop,
       contentLeft: contentLeft,
       contentWidth: contentWidth,
       primaryButtonLeft: contentLeft,
       primaryButtonTop: primaryButtonTop,
       secondaryButtonLeft: contentLeft,
       secondaryButtonTop: secondaryButtonTop,
+      returnCardLeft: contentLeft,
+      returnCardTop: returnCardTop,
+      returnCardWidth: contentWidth,
+      returnCardHeight: returnCardHeight,
       difficultyLeft: contentLeft,
       difficultyTop: difficultyTop,
       difficultyWidth: difficultyWidth,
@@ -324,6 +342,7 @@ function createHomeScene(options) {
           noSaveLabel: t("home.status.noSave"),
           hasSaveLabel: t("home.status.hasSave"),
           recentSummary: renderState && renderState.recentSummary ? renderState.recentSummary : "",
+          returnCardTitle: t("home.returnCard.title"),
           difficultyLabel: t("home.difficultyLabel"),
           pickerExpandLabel: t("home.difficultyAction.expand"),
           pickerCollapseLabel: t("home.difficultyAction.collapse"),
@@ -353,16 +372,80 @@ function createHomeScene(options) {
     });
   }
 
+  function drawReturnCard(context, metrics, visualSpec, returnCard) {
+    if (!returnCard) {
+      return;
+    }
+
+    fillRoundedRect(
+      context,
+      metrics.returnCardLeft + 2,
+      metrics.returnCardTop + 3,
+      metrics.returnCardWidth,
+      metrics.returnCardHeight,
+      20,
+      visualSpec.softShadowFill,
+      0.12
+    );
+    fillRoundedRect(
+      context,
+      metrics.returnCardLeft,
+      metrics.returnCardTop,
+      metrics.returnCardWidth,
+      metrics.returnCardHeight,
+      20,
+      visualSpec.panelFill
+    );
+    strokeRoundedRect(
+      context,
+      metrics.returnCardLeft,
+      metrics.returnCardTop,
+      metrics.returnCardWidth,
+      metrics.returnCardHeight,
+      20,
+      visualSpec.helperFill,
+      0.9,
+      0.72
+    );
+
+    context.fillStyle = visualSpec.labelFill;
+    context.font = "12px sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.fillText(returnCard.title, metrics.returnCardLeft + 16, metrics.returnCardTop + 20);
+
+    context.fillStyle = visualSpec.secondaryText || visualSpec.optionText;
+    context.font = "bold 15px sans-serif";
+    context.fillText(returnCard.summary, metrics.returnCardLeft + 16, metrics.returnCardTop + 42);
+
+    context.fillStyle = visualSpec.footerText;
+    context.font = "12px sans-serif";
+    context.fillText(returnCard.streakLabel, metrics.returnCardLeft + 16, metrics.returnCardTop + 62);
+
+    context.textAlign = "right";
+    context.font = "11px sans-serif";
+    (returnCard.tags || []).slice(0, 2).forEach(function (tag, index) {
+      context.fillText(
+        tag,
+        metrics.returnCardLeft + metrics.returnCardWidth - 16,
+        metrics.returnCardTop + 20 + index * 16
+      );
+    });
+
+    context.textAlign = "left";
+    context.font = "11px sans-serif";
+    context.fillText(returnCard.prompt, metrics.returnCardLeft + 16, metrics.returnCardTop + 80);
+  }
+
   function drawBrandBackdrop(context, metrics, visualSpec) {
     fillRoundedRect(context, 18, 26, canvasWidth - 36, canvasHeight - 52, 34, visualSpec.haloFill);
-    fillRoundedRect(context, metrics.contentLeft - 14, 54, contentWidth + 28, 142, 30, visualSpec.brandFrameFill);
-    fillRoundedRect(context, metrics.contentLeft - 8, 62, contentWidth + 16, 126, 26, visualSpec.brandPanelFill);
-    fillRoundedRect(context, metrics.contentLeft + 4, 72, contentWidth - 8, 92, 22, visualSpec.brandCoreFill);
-    fillRoundedRect(context, metrics.contentLeft + 18, 82, contentWidth - 36, 16, 10, visualSpec.highlightFill, 0.18);
+    fillRoundedRect(context, metrics.contentLeft - 14, metrics.brandFrameTop, contentWidth + 28, 142, 30, visualSpec.brandFrameFill);
+    fillRoundedRect(context, metrics.contentLeft - 8, metrics.brandPanelTop, contentWidth + 16, 126, 26, visualSpec.brandPanelFill);
+    fillRoundedRect(context, metrics.contentLeft + 4, metrics.brandCoreTop, contentWidth - 8, 92, 22, visualSpec.brandCoreFill);
+    fillRoundedRect(context, metrics.contentLeft + 18, metrics.brandHighlightTop, contentWidth - 36, 16, 10, visualSpec.highlightFill, 0.18);
     context.fillStyle = visualSpec.dividerFill;
-    context.fillRect(metrics.contentLeft + 18, 90, 46, 2);
-    context.fillRect(metrics.contentLeft + contentWidth - 64, 90, 46, 2);
-    fillRoundedRect(context, metrics.contentLeft + contentWidth - 34, 70, 16, 16, 6, visualSpec.sealFill);
+    context.fillRect(metrics.contentLeft + 18, metrics.brandDividerTop, 46, 2);
+    context.fillRect(metrics.contentLeft + contentWidth - 64, metrics.brandDividerTop, 46, 2);
   }
 
   function drawBrandText(context, metrics, visualSpec) {
@@ -455,7 +538,7 @@ function createHomeScene(options) {
     const labelY = metrics.difficultyTop - (isEnglish ? 24 : 18);
 
     context.fillStyle = visualSpec.labelFill;
-    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
+    context.font = isEnglish ? "11px sans-serif" : "12px sans-serif";
     context.textAlign = "left";
     context.textBaseline = "middle";
     context.fillText(visualSpec.difficultyLabel, metrics.difficultyLeft, labelY);
@@ -561,6 +644,7 @@ function createHomeScene(options) {
     drawBrandBackdrop(context, metrics, visualSpec);
     drawBrandText(context, metrics, visualSpec);
     drawPrimaryActions(context, metrics, hasSavedGame, visualSpec);
+    drawReturnCard(context, metrics, visualSpec, renderState ? renderState.homeReturnCard : null);
     drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t);
     drawSettingsEntry(context, metrics, visualSpec);
     drawHomeFooter(context, metrics, hasSavedGame, visualSpec);

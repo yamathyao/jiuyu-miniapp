@@ -10,6 +10,25 @@ function cloneCell(cell) {
   };
 }
 
+function cloneHintMetadata(hint) {
+  if (!hint || typeof hint !== "object") {
+    return null;
+  }
+
+  return {
+    primaryTechnique: typeof hint.primaryTechnique === "string"
+      ? hint.primaryTechnique
+      : "",
+    targetIndex: Number.isInteger(hint.targetIndex) ? hint.targetIndex : -1,
+    relatedIndexes: Array.isArray(hint.relatedIndexes)
+      ? hint.relatedIndexes.slice()
+      : [],
+    context: hint.context && typeof hint.context === "object"
+      ? Object.assign({}, hint.context)
+      : null
+  };
+}
+
 function cloneGame(game) {
   return {
     puzzleId: game.puzzleId,
@@ -17,6 +36,7 @@ function cloneGame(game) {
     puzzle: game.puzzle,
     solution: game.solution,
     techniques: Array.isArray(game.techniques) ? game.techniques.slice() : [],
+    hint: cloneHintMetadata(game.hint),
     cells: game.cells.map(cloneCell),
     elapsedSeconds: game.elapsedSeconds,
     mistakes: game.mistakes,
@@ -32,6 +52,7 @@ function createGame(puzzle) {
     puzzle: puzzle.puzzle,
     solution: puzzle.solution,
     techniques: Array.isArray(puzzle.techniques) ? puzzle.techniques.slice() : [],
+    hint: cloneHintMetadata(puzzle.hint),
     cells: puzzle.puzzle.split("").map(function (value, index) {
       const isEmpty = value === "0";
 
@@ -154,6 +175,33 @@ function undoLastStep(game) {
   };
 }
 
+function getHintRole(hintOptions, cellIndex) {
+  if (!hintOptions || hintOptions.hintTargetIndex < 0) {
+    return "";
+  }
+
+  if (cellIndex === hintOptions.hintTargetIndex) {
+    return "target";
+  }
+
+  if (hintOptions.hintRelatedIndexes.indexOf(cellIndex) < 0) {
+    return "";
+  }
+
+  if (hintOptions.hintDifficulty === "expert") {
+    return "related-strong";
+  }
+
+  if (
+    hintOptions.hintTechnique === "box-line-reduction" ||
+    hintOptions.hintContextPattern === "box-line"
+  ) {
+    return "related-strong";
+  }
+
+  return "related-soft";
+}
+
 function buildBoardView(game, selectedIndex, extraState) {
   const selectedCell = game.cells[selectedIndex];
   const selectedValue = selectedCell ? selectedCell.value : EMPTY_CELL;
@@ -164,6 +212,16 @@ function buildBoardView(game, selectedIndex, extraState) {
   const hintRelatedIndexes = extraState && Array.isArray(extraState.hintRelatedIndexes)
     ? extraState.hintRelatedIndexes
     : [];
+  const hintTechnique = extraState ? String(extraState.hintTechnique || "") : "";
+  const hintDifficulty = extraState ? String(extraState.hintDifficulty || game.difficulty || "") : "";
+  const hintContextPattern = extraState ? String(extraState.hintContextPattern || "") : "";
+  const hintOptions = {
+    hintTargetIndex: hintTargetIndex,
+    hintRelatedIndexes: hintRelatedIndexes,
+    hintTechnique: hintTechnique,
+    hintDifficulty: hintDifficulty,
+    hintContextPattern: hintContextPattern
+  };
 
   return game.cells.map(function (cell) {
     const hasValue = cell.value !== EMPTY_CELL;
@@ -181,7 +239,8 @@ function buildBoardView(game, selectedIndex, extraState) {
       hasNotes: hasNotes,
       issue: issueIndexes.indexOf(cell.index) >= 0,
       hintTarget: cell.index === hintTargetIndex,
-      hintRelated: hintRelatedIndexes.indexOf(cell.index) >= 0
+      hintRelated: hintRelatedIndexes.indexOf(cell.index) >= 0,
+      hintRole: getHintRole(hintOptions, cell.index)
     };
   });
 }

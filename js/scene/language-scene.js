@@ -10,10 +10,11 @@ const {
 function createLanguageScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
+  const verticalOffset = options.verticalOffset != null ? options.verticalOffset : 32;
   const contentWidth = Math.min(canvasWidth - 40, 320);
   const contentLeft = Math.floor((canvasWidth - contentWidth) / 2);
-  const shellTop = 112;
-  const shellHeight = 356;
+  const shellTop = 112 + verticalOffset;
+  const shellHeight = 424;
   const headerTop = shellTop + 18;
   const sectionTop = shellTop + 114;
   const optionTop = sectionTop + 14;
@@ -21,7 +22,7 @@ function createLanguageScene(options) {
   const optionGap = 12;
   const optionWidth = 248;
   const optionLeft = Math.floor((canvasWidth - optionWidth) / 2);
-  const footerTop = optionTop + optionHeight * 2 + optionGap + 20;
+  const footerTop = optionTop + optionHeight * 3 + optionGap * 2 + 20;
 
   function getMetrics() {
     return {
@@ -194,6 +195,17 @@ function createLanguageScene(options) {
       visualSpec
     );
 
+    drawOptionCard(
+      context,
+      metrics.optionLeft,
+      metrics.optionTop + (metrics.optionHeight + metrics.optionGap) * 2,
+      metrics.optionWidth,
+      metrics.optionHeight,
+      t("settings.languageJa"),
+      language === "ja",
+      visualSpec
+    );
+
     drawFooterCard(context, metrics, visualSpec, t);
   }
 
@@ -216,6 +228,15 @@ function createLanguageScene(options) {
       y <= metrics.optionTop + metrics.optionHeight * 2 + metrics.optionGap
     ) {
       return { type: "language", value: "en" };
+    }
+
+    if (
+      x >= metrics.optionLeft &&
+      x <= metrics.optionLeft + metrics.optionWidth &&
+      y >= metrics.optionTop + (metrics.optionHeight + metrics.optionGap) * 2 &&
+      y <= metrics.optionTop + metrics.optionHeight * 3 + metrics.optionGap * 2
+    ) {
+      return { type: "language", value: "ja" };
     }
 
     return null;

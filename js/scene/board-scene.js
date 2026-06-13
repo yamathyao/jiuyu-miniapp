@@ -82,8 +82,9 @@ function drawOverlayButton(context, left, top, width, height, label, theme) {
 function createBoardScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
+  const verticalOffset = options.verticalOffset != null ? options.verticalOffset : 32;
   const horizontalPadding = options.horizontalPadding || Math.max(16, Math.floor(canvasWidth * 0.04));
-  const topPadding = options.topPadding || Math.max(186, Math.floor(canvasHeight * 0.225));
+  const topPadding = options.topPadding || (Math.max(186, Math.floor(canvasHeight * 0.225)) + verticalOffset);
   const maxBoardSize = Math.min(
     canvasWidth - horizontalPadding * 2,
     canvasHeight * 0.62
@@ -94,11 +95,11 @@ function createBoardScene(options) {
     : Math.floor((canvasWidth - boardSize) / 2);
   const boardTop = options.boardTop != null ? options.boardTop : topPadding;
   const cellSize = boardSize / 9;
-  const headerPanelTop = 50;
+  const headerPanelTop = 50 + verticalOffset;
   const headerPanelHeight = 100;
-  const titleTop = 94;
-  const difficultyTop = 120;
-  const settingsTop = 74;
+  const titleTop = 94 + verticalOffset;
+  const difficultyTop = 120 + verticalOffset;
+  const settingsTop = 74 + verticalOffset;
 
   function getMetrics() {
     return {
@@ -149,6 +150,7 @@ function createBoardScene(options) {
   function drawHeader(context, renderState, theme, metrics) {
     const title = renderState ? renderState.title || "" : "";
     const difficultyLabel = renderState ? renderState.difficultyLabel || "" : "";
+    const timerLabel = renderState ? renderState.timerLabel || "" : "";
     const settingsLabel = renderState ? renderState.settingsLabel || "" : "";
 
     context.fillStyle = theme.surfaceTint || "#fff7eb";
@@ -175,6 +177,14 @@ function createBoardScene(options) {
       context.textAlign = "left";
       context.textBaseline = "middle";
       context.fillText(difficultyLabel, boardLeft, difficultyTop);
+    }
+
+    if (timerLabel) {
+      context.fillStyle = theme.buttonShadow || "#8f7569";
+      context.font = "14px sans-serif";
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      context.fillText(timerLabel, boardLeft + 96, difficultyTop);
     }
 
     if (settingsLabel) {
@@ -209,7 +219,13 @@ function createBoardScene(options) {
       ? "#7a3030"
       : theme.feedbackText || "#304252";
     const lineHeight = 17;
-    const maxWidth = boardSize - 24;
+    const progressLabel = hintProgress && hintProgress.current && hintProgress.total
+      ? String(hintProgress.current) + "/" + String(hintProgress.total)
+      : "";
+    const progressWidth = progressLabel
+      ? measureTextWidth(context, progressLabel) + 56
+      : 0;
+    const maxWidth = boardSize - 24 - progressWidth;
     const lines = getWrappedLines(context, feedbackMessage, maxWidth, 3);
     const feedbackHeight = Math.max(34, 14 + lines.length * lineHeight);
     const feedbackTop = boardTop - 20 - feedbackHeight;
@@ -226,16 +242,19 @@ function createBoardScene(options) {
     context.textBaseline = "top";
     drawWrappedText(context, feedbackMessage, boardLeft + 12, feedbackTop + 8, maxWidth, lineHeight, 3);
 
-    if (hintProgress && hintProgress.current && hintProgress.total) {
+    if (progressLabel) {
+      const previousAlpha = typeof context.globalAlpha === "number" ? context.globalAlpha : 1;
       context.fillStyle = theme.buttonShadow || "#8f7569";
-      context.font = "12px sans-serif";
+      context.font = "11px sans-serif";
       context.textAlign = "right";
       context.textBaseline = "top";
+      context.globalAlpha = 0.78;
       context.fillText(
-        String(hintProgress.current) + "/" + String(hintProgress.total),
+        progressLabel,
         boardLeft + boardSize - 12,
         feedbackTop + 8
       );
+      context.globalAlpha = previousAlpha;
     }
   }
 
@@ -295,7 +314,9 @@ function createBoardScene(options) {
     context.fillStyle = theme.buttonShadow || "#8f7569";
     context.font = "14px sans-serif";
     context.fillText(
-      t("difficulty." + summary.difficulty) + " · " + t("completion.timeLabel") + " " + summary.elapsedSeconds + "s",
+      t("difficulty." + summary.difficulty) + " · " +
+        t("completion.timeLabel") + " " +
+        String(summary.elapsedSeconds) + t("common.secondsShort"),
       cardLeft + cardWidth / 2,
       cardTop + 86
     );
@@ -428,10 +449,30 @@ function createBoardScene(options) {
     context.textAlign = "left";
     context.fillText(t("completion.statsTotalLabel") + " " + stats.totalCompleted, cardLeft + 22, cardTop + 146);
     context.fillText(t("completion.statsCompletedLabel") + " " + completionCount, cardLeft + 22, cardTop + 178);
-    context.fillText(t("completion.statsCurrentStreakLabel") + " " + currentStreakDays + " 天", cardLeft + 22, cardTop + 210);
-    context.fillText(t("completion.statsBestStreakLabel") + " " + bestStreakDays + " 天", cardLeft + 22, cardTop + 242);
-    context.fillText(t("completion.statsBestLabel") + " " + bestTime + "s", cardLeft + 22, cardTop + 274);
-    context.fillText(t("completion.statsAverageLabel") + " " + averageTime + "s", cardLeft + 22, cardTop + 306);
+    context.fillText(
+      t("completion.statsCurrentStreakValue", {
+        streak: String(currentStreakDays)
+      }),
+      cardLeft + 22,
+      cardTop + 210
+    );
+    context.fillText(
+      t("completion.statsBestStreakValue", {
+        streak: String(bestStreakDays)
+      }),
+      cardLeft + 22,
+      cardTop + 242
+    );
+    context.fillText(
+      t("completion.statsBestLabel") + " " + bestTime + t("common.secondsShort"),
+      cardLeft + 22,
+      cardTop + 274
+    );
+    context.fillText(
+      t("completion.statsAverageLabel") + " " + averageTime + t("common.secondsShort"),
+      cardLeft + 22,
+      cardTop + 306
+    );
     context.fillText(t("completion.statsHintsLabel") + " " + hintCount, cardLeft + 22, cardTop + 338);
     context.fillText(t("completion.statsHintsAverageLabel") + " " + averageHints, cardLeft + 22, cardTop + 370);
 
@@ -462,10 +503,16 @@ function createBoardScene(options) {
 
       context.fillStyle = cell.issue
         ? theme.issueFill || "#f0d5d5"
-        : cell.hintTarget
-          ? theme.selected || "#9ed9c8"
-          : cell.hintRelated
-            ? theme.hintRelated || "#e6efe8"
+        : cell.hintRole === "target"
+          ? theme.hintTarget || theme.selected || "#9ed9c8"
+          : cell.hintRole === "related-strong"
+            ? theme.hintRelatedStrong || theme.hintRelated || "#e6efe8"
+            : cell.hintRole === "related-soft"
+              ? theme.hintRelatedSoft || theme.hintRelated || "#e6efe8"
+              : cell.hintTarget
+                ? theme.hintTarget || theme.selected || "#9ed9c8"
+                : cell.hintRelated
+                  ? theme.hintRelated || "#e6efe8"
           : cell.selected
             ? theme.selected || "#9ed9c8"
             : cell.sameValue

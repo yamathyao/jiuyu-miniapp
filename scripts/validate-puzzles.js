@@ -1,5 +1,10 @@
 const { puzzles } = require("../js/data/puzzles");
 const { getRow, getColumn, getBox } = require("../js/utils/sudoku");
+const {
+  STRUCTURE_MINIMUMS,
+  groupPuzzlesByDifficulty,
+  findStructureShortfalls
+} = require("./puzzle-structure");
 
 const VALID_DIFFICULTIES = {
   beginner: true,
@@ -8,8 +13,22 @@ const VALID_DIFFICULTIES = {
   expert: true
 };
 
+const VALID_TECHNIQUES = {
+  "naked-single": true,
+  "hidden-single": true,
+  "pointing-pair": true,
+  "naked-pair": true,
+  "box-line-reduction": true,
+  "x-wing": true,
+  "xy-wing": true
+};
+
 function isDigitString(value) {
   return typeof value === "string" && /^[0-9]+$/.test(value);
+}
+
+function isGridIndex(value) {
+  return Number.isInteger(value) && value >= 0 && value < 81;
 }
 
 function validateGridCharacters(label, value, errors) {
@@ -52,6 +71,60 @@ function validateSolutionUnits(puzzle, errors) {
         return;
       }
     }
+  }
+}
+
+function validateHintMetadata(puzzle, errors) {
+  if (!puzzle.hint) {
+    if (puzzle.difficulty === "skilled" || puzzle.difficulty === "expert") {
+      errors.push(puzzle.id + ": advanced puzzles must provide hint metadata.");
+    }
+    return;
+  }
+
+  const hint = puzzle.hint;
+
+  if (typeof hint.primaryTechnique !== "string" || !VALID_TECHNIQUES[hint.primaryTechnique]) {
+    errors.push(puzzle.id + ": hint.primaryTechnique must be a supported technique.");
+  }
+
+  if (Array.isArray(puzzle.techniques) && puzzle.techniques.indexOf(hint.primaryTechnique) < 0) {
+    errors.push(puzzle.id + ": hint.primaryTechnique must be included in techniques.");
+  }
+
+  if (!isGridIndex(hint.targetIndex)) {
+    errors.push(puzzle.id + ": hint.targetIndex must be an integer from 0 to 80.");
+  } else if (puzzle.puzzle[hint.targetIndex] !== "0") {
+    errors.push(puzzle.id + ": hint.targetIndex must point to an editable cell.");
+  }
+
+  if (!Array.isArray(hint.relatedIndexes)) {
+    errors.push(puzzle.id + ": hint.relatedIndexes must be an array.");
+  } else {
+    const seenRelated = {};
+
+    hint.relatedIndexes.forEach(function (index, relatedIndex) {
+      if (!isGridIndex(index)) {
+        errors.push(
+          puzzle.id + ": hint.relatedIndexes[" + relatedIndex + "] must be an integer from 0 to 80."
+        );
+        return;
+      }
+
+      if (index === hint.targetIndex) {
+        errors.push(puzzle.id + ": hint.relatedIndexes cannot contain targetIndex.");
+      }
+
+      if (seenRelated[index]) {
+        errors.push(puzzle.id + ": hint.relatedIndexes cannot contain duplicates.");
+      }
+
+      seenRelated[index] = true;
+    });
+  }
+
+  if (hint.context != null && (typeof hint.context !== "object" || Array.isArray(hint.context))) {
+    errors.push(puzzle.id + ": hint.context must be an object when provided.");
   }
 }
 
@@ -98,19 +171,49 @@ function validatePuzzle(puzzle, seenIds, errors) {
   }
 
   validateSolutionUnits(puzzle, errors);
+  validateHintMetadata(puzzle, errors);
+}
+
+function validatePuzzleBank(sourcePuzzles) {
+  const errors = [];
+  const seenIds = {};
+  const seenDifficultyPuzzles = {};
+
+  if (!Array.isArray(sourcePuzzles) || sourcePuzzles.length === 0) {
+    errors.push("Puzzle bank must export a non-empty array.");
+    return errors;
+  }
+
+  sourcePuzzles.forEach(function (puzzle) {
+    if (puzzle && typeof puzzle === "object") {
+      const difficultyKey = String(puzzle.difficulty || "unknown");
+      const puzzleKey = String(puzzle.puzzle || "");
+      const duplicateKey = difficultyKey + "::" + puzzleKey;
+
+      if (seenDifficultyPuzzles[duplicateKey]) {
+        errors.push(
+          (puzzle.id || "unknown") + ": duplicate puzzle layout for difficulty " + difficultyKey + "."
+        );
+      } else {
+        seenDifficultyPuzzles[duplicateKey] = true;
+      }
+    }
+
+    validatePuzzle(puzzle, seenIds, errors);
+  });
+
+  const groupedPuzzles = groupPuzzlesByDifficulty(sourcePuzzles);
+  const structureErrors = findStructureShortfalls(groupedPuzzles, STRUCTURE_MINIMUMS);
+
+  structureErrors.forEach(function (error) {
+    errors.push(error);
+  });
+
+  return errors;
 }
 
 function main() {
-  const errors = [];
-  const seenIds = {};
-
-  if (!Array.isArray(puzzles) || puzzles.length === 0) {
-    errors.push("Puzzle bank must export a non-empty array.");
-  } else {
-    puzzles.forEach(function (puzzle) {
-      validatePuzzle(puzzle, seenIds, errors);
-    });
-  }
+  const errors = validatePuzzleBank(puzzles);
 
   if (errors.length > 0) {
     console.error("Puzzle validation failed:");
@@ -123,4 +226,13 @@ function main() {
   console.log("Puzzle validation passed for " + puzzles.length + " puzzles.");
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  VALID_DIFFICULTIES,
+  VALID_TECHNIQUES,
+  validatePuzzle,
+  validatePuzzleBank
+};

@@ -19,8 +19,12 @@ const { runDifficultyCheck } = require("./services/checker");
 const { getNextHint } = require("./services/hint-engine");
 const {
   createCompletionSummary,
-  applyCompletionToStats
+  applyCompletionToStats,
+  buildLastResultTags
 } = require("./services/stats-service");
+const {
+  registerShareSupport
+} = require("./services/share-service");
 const { createTranslator } = require("./i18n");
 const { getThemeByDifficulty } = require("./ui/theme-policy");
 const { createHomeScene } = require("./scene/home-scene");
@@ -70,17 +74,106 @@ function buildRecentSummary(stats, t) {
   });
 }
 
+function buildHomeReturnCard(stats, hasSavedGame, t) {
+  if (!stats || !stats.lastCompletedDifficulty || !stats.lastElapsedSeconds) {
+    return null;
+  }
+
+  return {
+    title: t("home.returnCard.title"),
+    summary: t("home.returnCard.summary", {
+      difficulty: t("difficulty." + stats.lastCompletedDifficulty),
+      time: String(stats.lastElapsedSeconds)
+    }),
+    streakLabel: t("home.returnCard.streakLabel", {
+      streak: String(stats.currentStreakDays || 0)
+    }),
+    tags: buildLastResultTags(stats, t).slice(0, 2),
+    prompt: hasSavedGame
+      ? t("home.returnCard.prompt.hasSave")
+      : t("home.returnCard.prompt.noSave")
+  };
+}
+
 const DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED = true;
+
+function getViewportMetrics(wxApi, canvas) {
+  let windowInfo = null;
+
+  if (wxApi && typeof wxApi.getWindowInfo === "function") {
+    try {
+      windowInfo = wxApi.getWindowInfo();
+    } catch (error) {
+      windowInfo = null;
+    }
+  }
+
+  if (!windowInfo && wxApi && typeof wxApi.getSystemInfoSync === "function") {
+    try {
+      windowInfo = wxApi.getSystemInfoSync();
+    } catch (error) {
+      windowInfo = null;
+    }
+  }
+
+  const canvasWidth = windowInfo && typeof windowInfo.windowWidth === "number"
+    ? windowInfo.windowWidth
+    : (canvas.width || 375);
+  const canvasHeight = windowInfo && typeof windowInfo.windowHeight === "number"
+    ? windowInfo.windowHeight
+    : (canvas.height || 812);
+  const pixelRatio = windowInfo && typeof windowInfo.pixelRatio === "number" && windowInfo.pixelRatio > 0
+    ? windowInfo.pixelRatio
+    : 1;
+
+  return {
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight,
+    pixelRatio: pixelRatio
+  };
+}
+
+function configureCanvas(canvas, context, viewport) {
+  canvas.width = Math.round(viewport.canvasWidth * viewport.pixelRatio);
+  canvas.height = Math.round(viewport.canvasHeight * viewport.pixelRatio);
+
+  if (typeof context.setTransform === "function") {
+    context.setTransform(viewport.pixelRatio, 0, 0, viewport.pixelRatio, 0, 0);
+    return;
+  }
+
+  if (typeof context.scale === "function") {
+    context.scale(viewport.pixelRatio, viewport.pixelRatio);
+  }
+}
+
+function formatElapsedClock(elapsedSeconds) {
+  const safeSeconds = Math.max(0, Math.floor(elapsedSeconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+
+  return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+}
+
+function isGameCompletedState(game) {
+  return Boolean(game) && Array.isArray(game.cells) && game.cells.every(function (cell) {
+    return cell.value === game.solution[cell.index];
+  });
+}
 
 function boot() {
   if (typeof wx === "undefined" || !wx.createCanvas) {
     return;
   }
 
+  registerShareSupport(wx);
+
   const canvas = wx.createCanvas();
   const context = canvas.getContext("2d");
-  const canvasWidth = canvas.width || 375;
-  const canvasHeight = canvas.height || 812;
+  const viewport = getViewportMetrics(wx, canvas);
+  const canvasWidth = viewport.canvasWidth;
+  const canvasHeight = viewport.canvasHeight;
+  configureCanvas(canvas, context, viewport);
   const primaryBrushAsset = {
     image: null,
     loaded: false
@@ -110,10 +203,12 @@ function boot() {
   const settings = loadSettings();
   const defaultPuzzle = findPuzzleByDifficulty(settings.preferredDifficulty);
   const restoredSession = loadCurrentGame(createGame(defaultPuzzle));
-  const hasSavedGame = restoredSession.game.history.length > 0 ||
+  const hasSavedGame = !isGameCompletedState(restoredSession.game) && (
+    restoredSession.game.history.length > 0 ||
     restoredSession.game.cells.some(function (cell) {
       return !cell.given && cell.value;
-    });
+    })
+  );
   let activeScreen = "home";
   let selectedDifficulty = settings.preferredDifficulty;
   let difficultyPickerOpen = false;
@@ -240,9 +335,7 @@ function boot() {
   }
 
   function isGameCompleted(nextGame) {
-    return nextGame.cells.every(function (cell) {
-      return cell.value === nextGame.solution[cell.index];
-    });
+    return isGameCompletedState(nextGame);
   }
 
   function openCompletionState() {
@@ -428,18 +521,19 @@ function boot() {
   }
 
   function drawHome() {
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.clearRect(0, 0, canvasWidth, canvasHeight);
     homeScene.draw(context, {
       hasSavedGame: hasSavedGame,
       selectedDifficulty: selectedDifficulty,
       difficultyPickerOpen: difficultyPickerOpen,
       recentSummary: buildRecentSummary(stats, t),
+      homeReturnCard: buildHomeReturnCard(stats, hasSavedGame, t),
       t: t
     });
   }
 
   function drawSettings() {
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.clearRect(0, 0, canvasWidth, canvasHeight);
     settingsScene.draw(context, {
       selectedDifficulty: selectedDifficulty,
       language: language,
@@ -464,9 +558,9 @@ function boot() {
       hintRelatedIndexes: hintState.relatedIndexes
     });
 
-    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.clearRect(0, 0, canvasWidth, canvasHeight);
     context.fillStyle = theme.background || "#f7f4ef";
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
     boardScene.draw(context, cells, {
       theme: Object.assign({}, theme, { t: t }),
       feedbackMessage: feedbackMessage,
@@ -479,9 +573,27 @@ function boot() {
       t: t,
       title: "方庭九屿",
       difficultyLabel: t("difficulty." + difficulty),
+      timerLabel: t("board.timerLabel") + " " + formatElapsedClock(game.elapsedSeconds),
       settingsLabel: t("settings.title")
     });
     toolbar.draw(context, noteMode, Object.assign({}, theme, { t: t }));
+  }
+
+  function advanceElapsedTime() {
+    if (activeScreen !== "board" || completionVisible || statsOverlayVisible) {
+      return;
+    }
+
+    game.elapsedSeconds += 1;
+    persistGameState();
+    draw();
+  }
+
+  if (typeof setInterval === "function") {
+    const timerHandle = setInterval(advanceElapsedTime, 1000);
+    if (timerHandle && typeof timerHandle.unref === "function") {
+      timerHandle.unref();
+    }
   }
 
   function draw() {
