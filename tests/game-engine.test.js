@@ -27,7 +27,9 @@ const {
   loadSettings,
   saveSettings,
   loadStats,
-  saveStats
+  saveStats,
+  loadProgress,
+  saveProgress
 } = require("../js/services/storage");
 const {
   createCompletionSummary,
@@ -35,6 +37,14 @@ const {
   createEmptyStats,
   applyCompletionToStats
 } = require("../js/services/stats-service");
+const {
+  createEmptyProgress,
+  isDifficultyUnlocked,
+  applyExamPassToProgress,
+  applyPointsToProgress,
+  getPointsReward,
+  getUnlockCost
+} = require("../js/services/progress-service");
 const {
   registerShareSupport
 } = require("../js/services/share-service");
@@ -1268,6 +1278,195 @@ test("home scene only exposes more difficulty options after the picker expands",
   );
 });
 
+test("home scene keeps locked difficulties in the picker payload", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    difficultyPickerOpen: true,
+    selectedDifficulty: "beginner",
+    t: createTranslator("zh-CN")
+  });
+
+  const lockedHit = homeScene.hitTest(
+    metrics.difficultyLeft + 20,
+    metrics.difficultyTop + metrics.difficultyHeight + metrics.difficultyGap + 20,
+    {
+      selectedDifficulty: "beginner",
+      difficultyPickerOpen: true,
+      difficultyStates: {
+        beginner: { unlocked: true },
+        intermediate: { unlocked: false },
+        skilled: { unlocked: false },
+        expert: { unlocked: false }
+      }
+    }
+  );
+
+  assert.deepEqual(lockedHit, {
+    type: "locked-difficulty",
+    value: "intermediate"
+  });
+});
+
+test("home scene exposes initial exam difficulty actions on first entry", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    initialExamChoiceVisible: true,
+    selectedDifficulty: "beginner",
+    t: createTranslator("zh-CN")
+  });
+
+  assert.deepEqual(
+    homeScene.hitTest(
+      metrics.difficultyLeft + 20,
+      metrics.difficultyTop + 20,
+      {
+        hasSavedGame: false,
+        initialExamChoiceVisible: true,
+        selectedDifficulty: "beginner",
+        difficultyStates: {
+          beginner: { unlocked: true },
+          intermediate: { unlocked: false },
+          skilled: { unlocked: false },
+          expert: { unlocked: false }
+        }
+      }
+    ),
+    { type: "action", value: "start-initial-exam:beginner" }
+  );
+
+  assert.deepEqual(
+    homeScene.hitTest(
+      metrics.difficultyLeft + 20,
+      metrics.difficultyTop + metrics.difficultyHeight + metrics.difficultyGap + 20,
+      {
+        hasSavedGame: false,
+        initialExamChoiceVisible: true,
+        selectedDifficulty: "beginner",
+        difficultyStates: {
+          beginner: { unlocked: true },
+          intermediate: { unlocked: false },
+          skilled: { unlocked: false },
+          expert: { unlocked: false }
+        }
+      }
+    ),
+    { type: "action", value: "start-initial-exam:intermediate" }
+  );
+});
+
+test("home scene exposes locked dialog actions for exam and points", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    selectedDifficulty: "beginner",
+    lockedDifficultyDialog: {
+      difficulty: "intermediate",
+      mode: "actions"
+    },
+    t: createTranslator("zh-CN")
+  });
+
+  assert.deepEqual(
+    homeScene.hitTest(
+      metrics.lockedDialogExamLeft + 12,
+      metrics.lockedDialogActionsTop + 12,
+      {
+        selectedDifficulty: "beginner",
+        lockedDifficultyDialog: {
+          difficulty: "intermediate",
+          mode: "actions"
+        }
+      }
+    ),
+    { type: "action", value: "start-locked-exam" }
+  );
+
+  assert.deepEqual(
+    homeScene.hitTest(
+      metrics.lockedDialogPointsLeft + 12,
+      metrics.lockedDialogActionsTop + 12,
+      {
+        selectedDifficulty: "beginner",
+        lockedDifficultyDialog: {
+          difficulty: "intermediate",
+          mode: "actions"
+        }
+      }
+    ),
+    { type: "action", value: "view-locked-points" }
+  );
+});
+
+test("home scene gives the locked difficulty dialog more vertical breathing room", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    selectedDifficulty: "beginner",
+    lockedDifficultyDialog: {
+      difficulty: "intermediate",
+      mode: "actions"
+    },
+    t: createTranslator("zh-CN")
+  });
+
+  assert.equal(metrics.lockedDialogCardHeight, 176);
+  assert.equal(metrics.lockedDialogActionsTop - metrics.lockedDialogCardTop, 128);
+  assert.equal(metrics.lockedDialogActionHeight, 28);
+});
+
+test("home scene initial exam choice does not show lock copy", function () {
+  const texts = [];
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    arcTo: function () {},
+    closePath: function () {},
+    fillRect: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillText: function (text) {
+      texts.push(String(text));
+    }
+  };
+
+  homeScene.draw(context, {
+    hasSavedGame: false,
+    selectedDifficulty: "beginner",
+    initialExamChoiceVisible: true,
+    difficultyStates: {
+      beginner: { unlocked: true },
+      intermediate: { unlocked: false },
+      skilled: { unlocked: false },
+      expert: { unlocked: false }
+    },
+    t: createTranslator("zh-CN")
+  });
+
+  assert.equal(texts.includes("LOCK"), false);
+  assert.equal(texts.includes("难度测试"), true);
+  assert.equal(texts.includes("点击开始"), true);
+});
+
 test("home scene does not depend on difficulty image assets when they are available", function () {
   const drawCalls = [];
   const homeScene = createHomeScene({
@@ -1445,18 +1644,18 @@ test("home scene keeps settings as a dedicated entry instead of inline language 
   );
 });
 
-test("home scene exposes a hidden debug near-complete action when enabled", function () {
+test("home scene no longer exposes a hidden debug near-complete action on the title area", function () {
   const homeScene = createHomeScene({
     canvasWidth: 375,
     canvasHeight: 812
   });
   const metrics = homeScene.getMetrics();
 
-  assert.deepEqual(
+  assert.equal(
     homeScene.hitTest(metrics.contentLeft + metrics.contentWidth / 2, metrics.brandTop, {
       debugShortcutEnabled: true
     }),
-    { type: "action", value: "debug-near-complete" }
+    null
   );
 });
 
@@ -1659,6 +1858,109 @@ test("board scene keeps the settings action on the centered plaque area", functi
     boardScene.hitTestHeaderAction(metrics.settingsLeft + metrics.settingsWidth / 2, metrics.settingsTop + metrics.settingsHeight / 2),
     { type: "action", value: "settings" }
   );
+});
+
+test("board scene renders exam status and remaining time labels", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const texts = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    fillRect: function () {},
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    stroke: function () {},
+    fill: function () {},
+    fillText: function (text) {
+      texts.push(text);
+    }
+  };
+
+  boardScene.draw(context, buildBoardView(createGame(puzzles[0]), -1), {
+    theme: getThemeByDifficulty("beginner"),
+    feedbackMessage: "考试未通过",
+    feedbackType: "warning",
+    examState: {
+      active: true,
+      failed: true,
+      remainingLabel: "剩余 00:00"
+    },
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    timerLabel: "计时 00:15",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(texts.includes("考试未通过"));
+  assert.ok(texts.includes("剩余 00:00"));
+});
+
+test("board scene keeps givens dark while editable digits use the softer accent color", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const game = createGame(puzzles[0]);
+  const coloredGame = applyInputValue(game, 2, "4");
+  const cells = buildBoardView(coloredGame, -1);
+  const fillCalls = [];
+  const textCalls = [];
+  const context = {
+    _fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    fillRect: function () {},
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    stroke: function () {},
+    fill: function () {},
+    fillText: function (text) {
+      fillCalls.push(this.fillStyle);
+      textCalls.push(String(text));
+    }
+  };
+
+  Object.defineProperty(context, "fillStyle", {
+    get: function () {
+      return this._fillStyle;
+    },
+    set: function (value) {
+      this._fillStyle = value;
+    }
+  });
+
+  boardScene.draw(context, cells, {
+    theme: getThemeByDifficulty("beginner"),
+    feedbackMessage: "",
+    feedbackType: "info",
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    settingsLabel: "设置"
+  });
+
+  const givenDigitIndex = textCalls.indexOf("5");
+  const editableDigitIndex = textCalls.indexOf("4");
+
+  assert.ok(givenDigitIndex >= 0);
+  assert.ok(editableDigitIndex >= 0);
+  assert.equal(fillCalls[givenDigitIndex], "#1f2933");
+  assert.equal(fillCalls[editableDigitIndex], "#8A5F45");
 });
 
 test("board scene exposes layered completion actions by difficulty", function () {
@@ -2084,6 +2386,28 @@ test("settings scene exposes back, language toggle, and restart actions", functi
   );
 });
 
+test("settings scene exposes a resume action when opened from the board", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = settingsScene.getMetrics({
+    showResumeAction: true,
+    t: createTranslator("zh-CN")
+  });
+
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.contentLeft + 20,
+      metrics.resumeCardTop + 20,
+      {
+        showResumeAction: true
+      }
+    ),
+    { type: "action", value: "resume-game" }
+  );
+});
+
 test("settings scene keeps the language action on the centered main card", function () {
   const settingsScene = createSettingsScene({
     canvasWidth: 375,
@@ -2102,6 +2426,34 @@ test("settings scene keeps the language action on the centered main card", funct
   assert.deepEqual(
     settingsScene.hitTest(metrics.contentLeft + metrics.contentWidth / 2, metrics.restartCardTop + metrics.restartCardHeight / 2),
     { type: "action", value: "restart-game" }
+  );
+});
+
+test("settings scene disables restart and difficulty actions during exam restriction", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = settingsScene.getMetrics();
+  const examRestrictedState = {
+    examSettingsRestricted: true
+  };
+
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.backLeft + 8, metrics.backTop + 8, examRestrictedState),
+    { type: "action", value: "back" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.languageCardLeft + 8, metrics.languageCardTop + 8, examRestrictedState),
+    { type: "action", value: "toggle-language-picker" }
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(metrics.contentLeft + 8, metrics.restartCardTop + 8, examRestrictedState),
+    { type: "action", value: "exit-exam" }
+  );
+  assert.equal(
+    settingsScene.hitTest(metrics.difficultyCardLeft + 10, metrics.difficultyCardTop + 10, examRestrictedState),
+    null
   );
 });
 
@@ -2484,6 +2836,63 @@ test("loadStats backfills newer stat fields for older saved snapshots", function
   assert.equal(loaded.hintCountByDifficulty.beginner, 0);
 });
 
+test("createEmptyProgress starts with only beginner unlocked", function () {
+  const progress = createEmptyProgress();
+
+  assert.deepEqual(progress.unlockedDifficulties, ["beginner"]);
+  assert.equal(progress.totalPoints, 0);
+  assert.equal(progress.examRecordByDifficulty.intermediate.passed, false);
+});
+
+test("applyExamPassToProgress unlocks current and lower difficulties", function () {
+  const progress = applyExamPassToProgress(createEmptyProgress(), "skilled");
+
+  assert.equal(isDifficultyUnlocked(progress, "beginner"), true);
+  assert.equal(isDifficultyUnlocked(progress, "intermediate"), true);
+  assert.equal(isDifficultyUnlocked(progress, "skilled"), true);
+  assert.equal(isDifficultyUnlocked(progress, "expert"), false);
+});
+
+test("applyPointsToProgress unlocks difficulties by threshold order", function () {
+  const progress = applyPointsToProgress(createEmptyProgress(), 260);
+
+  assert.equal(progress.totalPoints, 260);
+  assert.equal(isDifficultyUnlocked(progress, "intermediate"), true);
+  assert.equal(isDifficultyUnlocked(progress, "skilled"), true);
+  assert.equal(isDifficultyUnlocked(progress, "expert"), false);
+});
+
+test("getPointsReward and getUnlockCost expose the agreed values", function () {
+  assert.equal(getPointsReward("beginner"), 10);
+  assert.equal(getPointsReward("expert"), 40);
+  assert.equal(getUnlockCost("intermediate"), 100);
+  assert.equal(getUnlockCost("expert"), 450);
+});
+
+test("loadProgress falls back to default progress when storage is empty", function () {
+  const progress = loadProgress({
+    getStorageSync: function (key) {
+      assert.equal(key, STORAGE_KEYS.progress);
+      return "";
+    }
+  });
+
+  assert.deepEqual(progress.unlockedDifficulties, ["beginner"]);
+  assert.equal(progress.totalPoints, 0);
+});
+
+test("saveProgress writes the progress payload", function () {
+  const writes = [];
+  const saved = saveProgress(createEmptyProgress(), {
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    }
+  });
+
+  assert.equal(saved, true);
+  assert.equal(writes[0][0], STORAGE_KEYS.progress);
+});
+
 test("validatePuzzle reports invalid advanced hint metadata", function () {
   const errors = [];
   const seenIds = {};
@@ -2779,6 +3188,9 @@ test("registerShareSupport enables share menu and returns fixed share payloads",
   const calls = [];
   let appMessageHandler = null;
   let timelineHandler = null;
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+  const ja = createTranslator("ja");
 
   registerShareSupport({
     showShareMenu: function (options) {
@@ -2790,7 +3202,7 @@ test("registerShareSupport enables share menu and returns fixed share payloads",
     onShareTimeline: function (handler) {
       timelineHandler = handler;
     }
-  });
+  }, zh);
 
   assert.deepEqual(calls[0], ["showShareMenu", {
     withShareTicket: true,
@@ -2799,11 +3211,15 @@ test("registerShareSupport enables share menu and returns fixed share payloads",
   assert.equal(typeof appMessageHandler, "function");
   assert.equal(typeof timelineHandler, "function");
   assert.deepEqual(appMessageHandler(), {
-    title: "方庭九屿：一款本地优先的数独微信小游戏"
+    title: zh("share.friendTitle")
   });
   assert.deepEqual(timelineHandler(), {
-    title: "方庭九屿｜本地优先的数独小游戏"
+    title: zh("share.timelineTitle")
   });
+  assert.equal(en("share.friendTitle"), "Fangting Jiuyu: a local-first Sudoku WeChat game");
+  assert.equal(en("share.timelineTitle"), "Fangting Jiuyu | A local-first Sudoku mini game");
+  assert.equal(ja("share.friendTitle"), "方庭九屿：ローカルファーストの数独WeChatミニゲーム");
+  assert.equal(ja("share.timelineTitle"), "方庭九屿｜ローカルファーストの数独ミニゲーム");
 });
 
 test("registerShareSupport degrades safely when share APIs are unavailable", function () {
@@ -2860,6 +3276,10 @@ test("main entry boots into the home screen using the stored language", function
           preferredDifficulty: "expert",
           language: "en"
         };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
       }
 
       return "";
@@ -3074,6 +3494,10 @@ test("main entry advances and persists elapsed time during an active game", func
         };
       }
 
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
       return "";
     },
     setStorageSync: function (key, value) {
@@ -3120,6 +3544,30 @@ test("main entry advances and persists elapsed time during an active game", func
     global.setInterval = originalSetInterval;
     global.clearInterval = originalClearInterval;
   }
+});
+
+test("exam difficulty labels are distinct from normal difficulty labels", function () {
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+  const ja = createTranslator("ja");
+
+  assert.equal(
+    zh("board.examDifficultyLabel", { difficulty: zh("difficulty.beginner") }),
+    "新手考试"
+  );
+  assert.equal(zh("difficulty.beginner"), "新手");
+
+  assert.equal(
+    en("board.examDifficultyLabel", { difficulty: en("difficulty.beginner") }),
+    "Beginner Exam"
+  );
+  assert.equal(en("difficulty.beginner"), "Beginner");
+
+  assert.equal(
+    ja("board.examDifficultyLabel", { difficulty: ja("difficulty.beginner") }),
+    "初級試験"
+  );
+  assert.equal(ja("difficulty.beginner"), "初級");
 });
 
 test("main entry treats a completed saved game as a finished run instead of a resumable game", function () {
@@ -3199,6 +3647,10 @@ test("main entry treats a completed saved game as a finished run instead of a re
         };
       }
 
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
       return "";
     },
     onTouchStart: function () {}
@@ -3263,6 +3715,10 @@ test("main entry can open settings from home and switch language inline", functi
         };
       }
 
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
       return "";
     },
     setStorageSync: function (key, value) {
@@ -3288,7 +3744,9 @@ test("main entry can open settings from home and switch language inline", functi
       canvasWidth: 375,
       canvasHeight: 812
     });
-    const settingsMetrics = settingsScene.getMetrics();
+    const settingsMetrics = settingsScene.getMetrics({
+      showResumeAction: true
+    });
     const languageMetrics = createLanguageScene({
       canvasWidth: 375,
       canvasHeight: 812
@@ -3331,7 +3789,7 @@ test("main entry can open settings from home and switch language inline", functi
   }
 });
 
-test("main entry can open settings from board and return without leaving the game flow", function () {
+test("main entry can open settings from board and send the top-left action back home", function () {
   const texts = [];
   const originalWx = global.wx;
   const mainPath = require.resolve("../js/main");
@@ -3389,34 +3847,531 @@ test("main entry can open settings from board and return without leaving the gam
     require("../js/main");
     assert.equal(typeof touchHandler, "function");
 
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const settingsMetrics = settingsScene.getMetrics({
+      showResumeAction: true,
+      t: createTranslator("zh-CN")
+    });
+
     touchHandler({
-      touches: [
-        {
-          clientX: 180,
-          clientY: 286
-        }
-      ]
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
     });
     touchHandler({
-      touches: [
-        {
-          clientX: 320,
-          clientY: 48
-        }
-      ]
+      touches: [{
+        clientX: boardMetrics.settingsLeft + 12,
+        clientY: boardMetrics.settingsTop + 12
+      }]
     });
     touchHandler({
-      touches: [
-        {
-          clientX: 48,
-          clientY: 104
-        }
-      ]
+      touches: [{
+        clientX: settingsMetrics.backLeft + 12,
+        clientY: settingsMetrics.backTop + 12
+      }]
     });
 
     assert.ok(texts.includes("设置"));
     assert.ok(texts.includes("专家"));
     assert.ok(texts.includes("方庭九屿"));
+    assert.ok(texts.includes("回到首页"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry pauses elapsed time in settings and can resume back to the board", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  let tick = null;
+
+  delete require.cache[mainPath];
+  global.setInterval = function (handler) {
+    tick = handler;
+    return 1;
+  };
+  global.clearInterval = function () {};
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+    assert.equal(typeof tick, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const settingsMetrics = settingsScene.getMetrics({
+      showResumeAction: true,
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    tick();
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.settingsLeft + 12,
+        clientY: boardMetrics.settingsTop + 12
+      }]
+    });
+
+    tick();
+    tick();
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.contentLeft + 20,
+        clientY: settingsMetrics.resumeCardTop + 20
+      }]
+    });
+
+    tick();
+
+    assert.ok(texts.includes("回到游戏"));
+
+    const savedSession = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+    assert.ok(savedSession);
+    assert.equal(savedSession[1].game.elapsedSeconds, 2);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+});
+
+test("main entry restricts settings actions during an exam and sends back to home", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const beginnerPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "beginner";
+  });
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.currentGame) {
+        return {
+          game: {
+            puzzleId: beginnerPuzzle.id,
+            difficulty: "intermediate",
+            puzzle: beginnerPuzzle.puzzle,
+            solution: beginnerPuzzle.solution,
+            cells: beginnerPuzzle.puzzle.split("").map(function (value, index) {
+              return {
+                index: index,
+                value: value === "0" ? "" : value,
+                given: value !== "0",
+                notes: []
+              };
+            }),
+            elapsedSeconds: 120,
+            mistakes: 0,
+            hintsUsed: 0,
+            history: [{
+              index: 0,
+              mode: "value",
+              value: "1",
+              notes: []
+            }]
+          },
+          selectedIndex: -1,
+          noteMode: false,
+          examState: {
+            active: true,
+            difficulty: "intermediate",
+            timeLimitSeconds: 600,
+            deadlineReached: false
+          }
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics({
+      showResumeAction: true
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.settingsLeft + 12,
+        clientY: boardMetrics.settingsTop + 12
+      }]
+    });
+
+    assert.ok(texts.includes("回到首页"));
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + 20,
+        clientY: settingsMetrics.difficultyCardTop + 20
+      }]
+    });
+
+    const difficultyWrites = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings;
+    });
+    assert.equal(difficultyWrites.length, 0);
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.backLeft + 12,
+        clientY: settingsMetrics.backTop + 12
+      }]
+    });
+
+    assert.ok(texts.includes("首次进入，先完成一次难度测试"));
+    assert.ok(texts.includes("回到首页"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry exits exam to normal beginner home", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const beginnerPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "beginner";
+  });
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.currentGame) {
+        return {
+          game: {
+            puzzleId: beginnerPuzzle.id,
+            difficulty: "intermediate",
+            puzzle: beginnerPuzzle.puzzle,
+            solution: beginnerPuzzle.solution,
+            cells: beginnerPuzzle.puzzle.split("").map(function (value, index) {
+              return {
+                index: index,
+                value: value === "0" ? "" : value,
+                given: value !== "0",
+                notes: []
+              };
+            }),
+            elapsedSeconds: 120,
+            mistakes: 0,
+            hintsUsed: 0,
+            history: [{
+              index: 0,
+              mode: "value",
+              value: "1",
+              notes: []
+            }]
+          },
+          selectedIndex: -1,
+          noteMode: false,
+          examState: {
+            active: true,
+            difficulty: "intermediate",
+            timeLimitSeconds: 600,
+            deadlineReached: false
+          }
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const settingsMetrics = settingsScene.getMetrics({
+      showResumeAction: true
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.settingsLeft + 12,
+        clientY: boardMetrics.settingsTop + 12
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.contentLeft + 20,
+        clientY: settingsMetrics.restartCardTop + 20
+      }]
+    });
+
+    assert.ok(texts.includes("继续游戏"));
+    assert.ok(texts.includes("当前难度: 新手"));
+    assert.equal(texts.includes("首次进入，先完成一次难度测试"), false);
+
+    const savedSettings = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings;
+    }).pop();
+    assert.ok(savedSettings);
+    assert.equal(savedSettings[1].preferredDifficulty, "beginner");
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -3578,6 +4533,10 @@ test("main entry can change preferred difficulty directly inside settings", func
         };
       }
 
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
       return "";
     },
     setStorageSync: function (key, value) {
@@ -3676,6 +4635,10 @@ test("main entry switches the active game when changing difficulty inside settin
           preferredDifficulty: "beginner",
           language: "zh-CN"
         };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
       }
 
       return "";
@@ -3909,6 +4872,565 @@ test("main entry shows completion card and writes stats when a game is completed
   }
 });
 
+test("main entry opens locked difficulty exam flow from home", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const collapsedMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      selectedDifficulty: "beginner",
+      t: createTranslator("zh-CN")
+    });
+    const expandedMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: true,
+      selectedDifficulty: "beginner",
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: collapsedMetrics.difficultyLeft + 20,
+        clientY: collapsedMetrics.difficultyTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: expandedMetrics.difficultyLeft + 20,
+        clientY: expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20
+      }]
+    });
+
+    assert.ok(texts.includes("参加考试"));
+    assert.ok(texts.includes("进阶 尚未解锁"));
+    assert.ok(texts.includes("通过考试可直接解锁当前难度"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("initial exam choices all start with the same 10-minute limit", function () {
+  const difficulties = ["beginner", "intermediate", "skilled", "expert"];
+
+  difficulties.forEach(function (difficulty, index) {
+    const writes = [];
+    const originalWx = global.wx;
+    const mainPath = require.resolve("../js/main");
+    let touchHandler = null;
+
+    delete require.cache[mainPath];
+    global.wx = {
+      createCanvas: function () {
+        return {
+          width: 375,
+          height: 812,
+          getContext: function () {
+            return {
+              fillStyle: "",
+              font: "",
+              textAlign: "",
+              textBaseline: "",
+              lineWidth: 1,
+              clearRect: function () {},
+              fillRect: function () {},
+              beginPath: function () {},
+              moveTo: function () {},
+              lineTo: function () {},
+              stroke: function () {},
+              fill: function () {},
+              arcTo: function () {},
+              closePath: function () {},
+              fillText: function () {}
+            };
+          }
+        };
+      },
+      createImage: function () {
+        return {
+          onload: null,
+          onerror: null,
+          src: ""
+        };
+      },
+      getStorageSync: function (key) {
+        if (key === STORAGE_KEYS.settings) {
+          return {
+            preferredDifficulty: "beginner",
+            language: "zh-CN"
+          };
+        }
+
+        return "";
+      },
+      setStorageSync: function (key, value) {
+        writes.push([key, value]);
+      },
+      onTouchStart: function (handler) {
+        touchHandler = handler;
+      }
+    };
+
+    try {
+      require("../js/main");
+      assert.equal(typeof touchHandler, "function");
+
+      const homeScene = createHomeScene({
+        canvasWidth: 375,
+        canvasHeight: 812
+      });
+      const metrics = homeScene.getMetrics({
+        initialExamChoiceVisible: true,
+        selectedDifficulty: "beginner",
+        t: createTranslator("zh-CN")
+      });
+
+      touchHandler({
+        touches: [{
+          clientX: metrics.difficultyLeft + 20,
+          clientY: metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap) + 20
+        }]
+      });
+
+      const savedSession = writes.filter(function (entry) {
+        return entry[0] === STORAGE_KEYS.currentGame;
+      }).pop();
+
+      assert.ok(savedSession);
+      assert.equal(savedSession[1].game.difficulty, difficulty);
+      assert.equal(savedSession[1].examState.difficulty, difficulty);
+      assert.equal(savedSession[1].examState.timeLimitSeconds, 600);
+    } finally {
+      delete require.cache[mainPath];
+      global.wx = originalWx;
+    }
+  });
+});
+
+test("main entry shows initial exam difficulty choice on first launch", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function () {},
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+    assert.ok(texts.some(function (text) { return String(text).indexOf("首次进入，先完成一次难度测试") >= 0; }));
+    assert.ok(texts.some(function (text) { return String(text).indexOf("在时限内完成，可解锁当前难度及以下难度") >= 0; }));
+    assert.equal(texts.includes("开始新局"), false);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry lets locked difficulty dialog switch to points view", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+
+      return "";
+    },
+    setStorageSync: function () {},
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const expandedMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: true,
+      selectedDifficulty: "beginner",
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: expandedMetrics.difficultyLeft + 20,
+        clientY: expandedMetrics.difficultyTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: expandedMetrics.difficultyLeft + 20,
+        clientY: expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20
+      }]
+    });
+
+    const dialogMetrics = homeScene.getMetrics({
+      selectedDifficulty: "beginner",
+      lockedDifficultyDialog: {
+        difficulty: "intermediate",
+        mode: "actions"
+      },
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: dialogMetrics.lockedDialogPointsLeft + 12,
+        clientY: dialogMetrics.lockedDialogActionsTop + 12
+      }]
+    });
+
+    assert.ok(texts.some(function (text) { return String(text).indexOf("当前积分 0 / 100") >= 0; }));
+    assert.ok(texts.some(function (text) { return String(text).indexOf("还差 100 积分解锁") >= 0; }));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry does not award points when an exam is finished after timeout", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  let tick = null;
+  const beginnerPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "beginner";
+  });
+  const overdueExamSession = {
+    game: {
+      puzzleId: beginnerPuzzle.id,
+      difficulty: "intermediate",
+      puzzle: beginnerPuzzle.puzzle,
+      solution: beginnerPuzzle.solution,
+      cells: beginnerPuzzle.solution.split("").map(function (value, index) {
+        const isMissing = index === 2;
+        const isGiven = beginnerPuzzle.puzzle[index] !== "0";
+        return {
+          index: index,
+          value: isMissing ? "" : value,
+          given: isGiven,
+          notes: []
+        };
+      }),
+      elapsedSeconds: 599,
+      mistakes: 0,
+      hintsUsed: 0,
+      history: []
+    },
+    selectedIndex: -1,
+    noteMode: false,
+    examState: {
+      active: true,
+      difficulty: "intermediate",
+      timeLimitSeconds: 600,
+      deadlineReached: false
+    }
+  };
+
+  delete require.cache[mainPath];
+  global.setInterval = function (handler) {
+    tick = handler;
+    return 1;
+  };
+  global.clearInterval = function () {};
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(String(text));
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.currentGame) {
+        return overdueExamSession;
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+    assert.equal(typeof tick, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    tick();
+
+    const boardScene = createBoardScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const toolbar = createToolbar({
+      canvasWidth: 375,
+      canvasHeight: 812,
+      boardMetrics: boardScene.getMetrics()
+    });
+    const boardMetrics = boardScene.getMetrics();
+    const toolbarMetrics = toolbar.getMetrics();
+    const expectedCompletionValue = Number(beginnerPuzzle.solution[2]);
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.boardLeft + boardMetrics.cellSize * 2.5,
+        clientY: boardMetrics.boardTop + boardMetrics.cellSize * 0.5
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: toolbarMetrics.left + (toolbarMetrics.width / 9) * (expectedCompletionValue - 0.5),
+        clientY: toolbarMetrics.top + toolbarMetrics.numberHeight / 2
+      }]
+    });
+
+    const savedProgress = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.progress;
+    }).pop();
+
+    assert.ok(savedProgress);
+    assert.equal(savedProgress[1].totalPoints, 0);
+    assert.ok(texts.includes("本局不计入积分"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+});
+
 test("board scene leaves more top breathing room for the new header", function () {
   const boardScene = createBoardScene({
     canvasWidth: 375,
@@ -3934,9 +5456,15 @@ test("theme policy exposes grouped visual tokens for playful and pro modes", fun
   assert.equal(typeof playful.surfaceTint, "string");
   assert.equal(typeof playful.ornament, "string");
   assert.equal(typeof playful.hintRelated, "string");
+  assert.equal(playful.givenDigit, "#1f2933");
+  assert.equal(playful.editableDigit, "#8A5F45");
+  assert.equal(playful.noteDigit, "#607078");
   assert.equal(typeof pro.surfaceTint, "string");
   assert.equal(typeof pro.ornament, "string");
   assert.equal(typeof pro.hintRelated, "string");
+  assert.equal(pro.givenDigit, "#1f2933");
+  assert.equal(pro.editableDigit, "#8A5F45");
+  assert.equal(pro.noteDigit, "#607078");
 });
 
 test("theme policy exposes layered hint tokens for playful and pro modes", function () {
@@ -4105,4 +5633,75 @@ test("createTranslator exposes shorter home support copy", function () {
   assert.equal(zh("home.returnCard.prompt.hasSave"), "继续这局，或马上新开。");
   assert.equal(en("home.status.hasSave"), "Continue your last run.");
   assert.equal(en("home.returnCard.prompt.noSave"), "Start fresh and keep the streak going.");
+});
+
+test("createTranslator exposes locked difficulty and exam copy", function () {
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+  const ja = createTranslator("ja");
+
+  assert.equal(zh("home.difficultyLocked"), "未解锁");
+  assert.equal(zh("home.lockedDialog.examAction"), "参加考试");
+  assert.equal(zh("home.lockedDialog.examUnlockHint"), "通过考试可直接解锁当前难度");
+  assert.equal(zh("home.initialExam.entryTag"), "难度测试");
+  assert.equal(zh("settings.backHome"), "回到首页");
+  assert.equal(zh("settings.exitExamLabel"), "退出考试");
+  assert.equal(en("home.lockedDialog.pointsAction"), "View points");
+  assert.equal(en("home.lockedDialog.examUnlockHint"), "Pass the exam to unlock this level directly");
+  assert.equal(en("home.initialExam.entryAction"), "Tap to start");
+  assert.equal(en("settings.examLockedHint"), "During an exam, only Home and language switching stay available.");
+  assert.equal(ja("home.initialExam.entryTag"), "難易度テスト");
+  assert.equal(ja("settings.exitExamLabel"), "試験を終了");
+  assert.equal(ja("home.lockedDialog.examUnlockHint"), "試験に合格するとこの難易度を直接解放できます");
+});
+
+test("createTranslator exposes exam board and completion copy", function () {
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+  const ja = createTranslator("ja");
+
+  assert.equal(zh("board.examActive"), "考试中");
+  assert.equal(zh("completion.pointsBlocked"), "本局不计入积分");
+  assert.equal(en("completion.pointsAwarded", { points: "20" }), "Points +20");
+  assert.equal(ja("board.examFailed"), "試験不合格");
+  assert.equal(ja("completion.pointsBlocked"), "この一局はポイント対象外です");
+});
+
+test("ja locale keeps the same exam and settings key coverage as zh-CN", function () {
+  const { LOCALES } = require("../js/i18n/locales");
+  const sections = [
+    "home.initialExam",
+    "home.lockedDialog",
+    "settings",
+    "completion",
+    "board"
+  ];
+
+  function getValue(source, path) {
+    return path.split(".").reduce(function (current, segment) {
+      return current ? current[segment] : undefined;
+    }, source);
+  }
+
+  function collectLeafPaths(node, prefix) {
+    return Object.keys(node).reduce(function (paths, key) {
+      const nextPrefix = prefix ? prefix + "." + key : key;
+      const value = node[key];
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return paths.concat(collectLeafPaths(value, nextPrefix));
+      }
+      paths.push(nextPrefix);
+      return paths;
+    }, []);
+  }
+
+  sections.forEach(function (section) {
+    const zhSection = getValue(LOCALES["zh-CN"], section);
+    const jaSection = getValue(LOCALES.ja, section);
+    const zhLeafPaths = collectLeafPaths(zhSection, section);
+
+    zhLeafPaths.forEach(function (leafPath) {
+      assert.notEqual(getValue(jaSection, leafPath.slice(section.length + 1)), undefined, "Missing ja locale key: " + leafPath);
+    });
+  });
 });

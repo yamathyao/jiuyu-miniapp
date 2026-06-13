@@ -189,6 +189,10 @@ function createHomeScene(options) {
   }
 
   function getDifficultyRows(renderState) {
+    if (renderState && renderState.initialExamChoiceVisible) {
+      return DIFFICULTIES.length;
+    }
+
     return renderState && renderState.difficultyPickerOpen ? DIFFICULTIES.length : 1;
   }
 
@@ -196,6 +200,16 @@ function createHomeScene(options) {
     return DIFFICULTIES.filter(function (difficulty) {
       return difficulty !== selectedDifficulty;
     });
+  }
+
+  function getDifficultyState(renderState, difficulty) {
+    const states = renderState && renderState.difficultyStates ? renderState.difficultyStates : null;
+
+    if (!states || !states[difficulty]) {
+      return { unlocked: true };
+    }
+
+    return states[difficulty];
   }
 
   function getMetrics(renderState) {
@@ -206,12 +220,22 @@ function createHomeScene(options) {
         };
     const isEnglish = isEnglishTranslator(t);
     const difficultyRows = getDifficultyRows(renderState);
+    const initialExamChoiceVisible = Boolean(renderState && renderState.initialExamChoiceVisible);
     const settingsTop = difficultyTop + difficultyHeight + (isEnglish ? 36 : 28) +
       (difficultyRows > 1 ? (difficultyRows - 1) * (difficultyHeight + difficultyGap) : 0);
     const languageOptionTop = settingsTop + 58;
     const languageOptionHeight = 46;
     const languageOptionWidth = contentWidth;
     const footerTop = settingsTop + (isEnglish ? 70 : 62);
+    const lockedDialogVisible = Boolean(renderState && renderState.lockedDifficultyDialog);
+    const lockedDialogCardWidth = contentWidth;
+    const lockedDialogCardHeight = 176;
+    const lockedDialogCardLeft = contentLeft;
+    const lockedDialogCardTop = footerTop + 34;
+    const lockedDialogActionsTop = lockedDialogCardTop + 128;
+    const lockedDialogActionWidth = Math.floor((lockedDialogCardWidth - 32) / 2);
+    const lockedDialogExamLeft = lockedDialogCardLeft + 16;
+    const lockedDialogPointsLeft = lockedDialogCardLeft + lockedDialogCardWidth - 16 - lockedDialogActionWidth;
 
     return {
       brandTitle: "方庭九屿",
@@ -237,12 +261,23 @@ function createHomeScene(options) {
       difficultyHeight: difficultyHeight,
       difficultyGap: difficultyGap,
       difficultyRows: difficultyRows,
+      initialExamChoiceVisible: initialExamChoiceVisible,
       selectedDifficultyTop: difficultyTop,
       settingsTop: settingsTop,
       languageOptionTop: languageOptionTop,
       languageOptionHeight: languageOptionHeight,
       languageOptionWidth: languageOptionWidth,
-      footerTop: footerTop
+      footerTop: footerTop,
+      lockedDialogVisible: lockedDialogVisible,
+      lockedDialogCardLeft: lockedDialogCardLeft,
+      lockedDialogCardTop: lockedDialogCardTop,
+      lockedDialogCardWidth: lockedDialogCardWidth,
+      lockedDialogCardHeight: lockedDialogCardHeight,
+      lockedDialogActionsTop: lockedDialogActionsTop,
+      lockedDialogActionWidth: lockedDialogActionWidth,
+      lockedDialogActionHeight: 28,
+      lockedDialogExamLeft: lockedDialogExamLeft,
+      lockedDialogPointsLeft: lockedDialogPointsLeft
     };
   }
 
@@ -295,7 +330,12 @@ function createHomeScene(options) {
           badgeTextFill: "#345048",
           settingsFill: "#fbfaf5",
           settingsInnerFill: "#f2efe6",
-          settingsEdgeFill: "#c7c8bd"
+          settingsEdgeFill: "#c7c8bd",
+          initialExamTitle: t("home.initialExam.title"),
+          initialExamSubtitle: t("home.initialExam.subtitle"),
+          initialExamFallback: t("home.initialExam.fallback"),
+          initialExamTag: t("home.initialExam.entryTag"),
+          initialExamAction: t("home.initialExam.entryAction")
         }
       : {
           tone: "playful",
@@ -334,7 +374,12 @@ function createHomeScene(options) {
           badgeTextFill: "#7d4a43",
           settingsFill: "#fff9f1",
           settingsInnerFill: "#f8efe3",
-          settingsEdgeFill: "#dfc0a4"
+          settingsEdgeFill: "#dfc0a4",
+          initialExamTitle: t("home.initialExam.title"),
+          initialExamSubtitle: t("home.initialExam.subtitle"),
+          initialExamFallback: t("home.initialExam.fallback"),
+          initialExamTag: t("home.initialExam.entryTag"),
+          initialExamAction: t("home.initialExam.entryAction")
         }, {
           primaryLabel: t("home.primary.continue"),
           secondaryLabel: t("home.primary.newGame"),
@@ -352,12 +397,55 @@ function createHomeScene(options) {
         });
   }
 
-  function drawDifficultyCard(context, left, top, width, height, difficultyKey, label, selected, visualSpec) {
+  function drawDifficultyCard(context, left, top, width, height, difficultyKey, label, selected, visualSpec, difficultyState) {
     drawDifficultyBadge(context, left, top, width, height, label, selected, visualSpec);
+
+    if (difficultyState && difficultyState.unlocked === false) {
+      context.fillStyle = visualSpec.helperFill;
+      context.font = "11px sans-serif";
+      context.textAlign = "right";
+      context.textBaseline = "middle";
+      context.fillText("LOCK", left + width - 16, top + height / 2);
+    }
   }
 
-  function drawOutlinedDifficultyCard(context, left, top, width, height, label, selected, visualSpec) {
-    drawDifficultyBadge(context, left, top, width, height, label, selected, visualSpec);
+  function drawInitialExamDifficultyCard(context, left, top, width, height, label, selected, visualSpec) {
+    const baseFill = selected ? visualSpec.accentFill : visualSpec.secondaryFill;
+    const innerFill = selected ? visualSpec.accentInnerFill : visualSpec.secondaryInnerFill;
+    const borderFill = selected ? visualSpec.accentEdgeFill : visualSpec.secondaryEdgeFill;
+    const textFill = selected ? visualSpec.accentText : visualSpec.secondaryText;
+    const tagFill = selected ? visualSpec.highlightFill : "#fffdf8";
+    const tagTextFill = selected ? visualSpec.accentEdgeFill : visualSpec.helperFill;
+    const actionTextFill = selected ? visualSpec.accentText : visualSpec.helperFill;
+
+    fillRoundedRect(context, left + 2, top + 6, width, height, 20, visualSpec.softShadowFill, 0.24);
+    fillRoundedRect(context, left, top, width, height, 20, baseFill);
+    strokeRoundedRect(context, left, top, width, height, 20, borderFill, selected ? 1.8 : 1.2);
+    fillRoundedRect(context, left + 10, top + 8, width - 20, height - 16, 14, innerFill, 0.92);
+    fillRoundedRect(context, left + 14, top + 6, width - 28, 10, 6, visualSpec.highlightFill, 0.28);
+    fillRoundedRect(context, left + 14, top + 12, 74, 22, 11, tagFill, selected ? 0.96 : 0.92);
+    strokeRoundedRect(context, left + 14, top + 12, 74, 22, 11, borderFill, 1, 0.5);
+
+    context.fillStyle = tagTextFill;
+    context.font = "bold 11px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(visualSpec.initialExamTag, left + 51, top + 23);
+
+    drawCenterLabel(context, label, left + width / 2, top + height / 2 + 1, {
+      color: textFill,
+      font: selected ? "bold 18px sans-serif" : "17px sans-serif"
+    });
+
+    context.fillStyle = actionTextFill;
+    context.font = "11px sans-serif";
+    context.textAlign = "right";
+    context.textBaseline = "middle";
+    context.fillText(visualSpec.initialExamAction, left + width - 18, top + height - 14);
+  }
+
+  function drawOutlinedDifficultyCard(context, left, top, width, height, label, selected, visualSpec, difficultyState) {
+    drawDifficultyCard(context, left, top, width, height, "", label, selected, visualSpec, difficultyState);
   }
 
   function drawSettingsPlaque(context, left, top, width, height, label, visualSpec) {
@@ -530,7 +618,35 @@ function createHomeScene(options) {
     );
   }
 
-  function drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t) {
+  function drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t, renderState) {
+    if (renderState && renderState.initialExamChoiceVisible) {
+      context.fillStyle = visualSpec.labelFill;
+      context.font = "bold 16px sans-serif";
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      context.fillText(visualSpec.initialExamTitle, metrics.difficultyLeft, metrics.difficultyTop - 52);
+
+      context.fillStyle = visualSpec.footerText;
+      context.font = "12px sans-serif";
+      context.fillText(visualSpec.initialExamSubtitle, metrics.difficultyLeft, metrics.difficultyTop - 28);
+      context.fillText(visualSpec.initialExamFallback, metrics.difficultyLeft, metrics.footerTop);
+
+      DIFFICULTIES.forEach(function (difficulty, index) {
+        const top = metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap);
+        drawInitialExamDifficultyCard(
+          context,
+          metrics.difficultyLeft,
+          top,
+          metrics.difficultyWidth,
+          metrics.difficultyHeight,
+          t("difficulty." + difficulty),
+          difficulty === selectedDifficulty,
+          visualSpec
+        );
+      });
+      return;
+    }
+
     const isEnglish = isEnglishTranslator(t);
     const helperLabel = pickerOpen
       ? visualSpec.pickerCollapseLabel
@@ -557,7 +673,8 @@ function createHomeScene(options) {
         selectedDifficulty,
         t("difficulty." + selectedDifficulty),
         true,
-        visualSpec
+        visualSpec,
+        getDifficultyState(renderState, selectedDifficulty)
       );
       return;
     }
@@ -570,11 +687,13 @@ function createHomeScene(options) {
       metrics.difficultyHeight,
       t("difficulty." + selectedDifficulty),
       true,
-      visualSpec
+      visualSpec,
+      getDifficultyState(renderState, selectedDifficulty)
     );
 
     getSelectableDifficulties(selectedDifficulty).forEach(function (difficulty, index) {
       const top = metrics.difficultyTop + (index + 1) * (metrics.difficultyHeight + metrics.difficultyGap);
+      const difficultyState = getDifficultyState(renderState, difficulty);
 
       drawOutlinedDifficultyCard(
         context,
@@ -584,7 +703,8 @@ function createHomeScene(options) {
         metrics.difficultyHeight,
         t("difficulty." + difficulty),
         false,
-        visualSpec
+        visualSpec,
+        difficultyState
       );
     });
   }
@@ -602,6 +722,41 @@ function createHomeScene(options) {
       visualSpec.settingsLabel,
       visualSpec
     );
+  }
+
+  function drawLockedDifficultyDialog(context, metrics, visualSpec, dialog) {
+    if (!dialog) {
+      return;
+    }
+
+    const cardWidth = metrics.lockedDialogCardWidth;
+    const cardHeight = metrics.lockedDialogCardHeight;
+    const cardLeft = metrics.lockedDialogCardLeft;
+    const cardTop = metrics.lockedDialogCardTop;
+
+    fillRoundedRect(context, cardLeft + 2, cardTop + 4, cardWidth, cardHeight, 22, visualSpec.softShadowFill, 0.22);
+    fillRoundedRect(context, cardLeft, cardTop, cardWidth, cardHeight, 22, visualSpec.panelFill);
+    strokeRoundedRect(context, cardLeft, cardTop, cardWidth, cardHeight, 22, visualSpec.helperFill, 1.2, 0.78);
+
+    context.fillStyle = visualSpec.titleColor || visualSpec.secondaryText;
+    context.font = "bold 16px sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.fillText(dialog.title, cardLeft + 16, cardTop + 28);
+
+    context.fillStyle = visualSpec.footerText;
+    context.font = "12px sans-serif";
+    context.fillText(dialog.pointsProgress, cardLeft + 16, cardTop + 60);
+    context.fillText(dialog.mode === "points" ? dialog.pointsRemaining : dialog.fallbackHint, cardLeft + 16, cardTop + 86);
+    context.fillText(dialog.examUnlockHint, cardLeft + 16, cardTop + 112);
+
+    context.fillStyle = visualSpec.secondaryText;
+    context.font = "bold 14px sans-serif";
+    context.textAlign = "left";
+    context.fillText(dialog.examAction, metrics.lockedDialogExamLeft, metrics.lockedDialogActionsTop);
+
+    context.textAlign = "right";
+    context.fillText(dialog.pointsAction, metrics.lockedDialogPointsLeft + metrics.lockedDialogActionWidth, metrics.lockedDialogActionsTop);
   }
 
   function drawHomeFooter(context, metrics, hasSavedGame, visualSpec) {
@@ -631,6 +786,7 @@ function createHomeScene(options) {
       ? renderState.selectedDifficulty
       : "beginner";
     const pickerOpen = Boolean(renderState && renderState.difficultyPickerOpen);
+    const initialExamChoiceVisible = Boolean(renderState && renderState.initialExamChoiceVisible);
     const t = renderState && typeof renderState.t === "function"
       ? renderState.t
       : function (key) {
@@ -643,11 +799,16 @@ function createHomeScene(options) {
     context.fillRect(0, 0, canvasWidth, canvasHeight);
     drawBrandBackdrop(context, metrics, visualSpec);
     drawBrandText(context, metrics, visualSpec);
-    drawPrimaryActions(context, metrics, hasSavedGame, visualSpec);
-    drawReturnCard(context, metrics, visualSpec, renderState ? renderState.homeReturnCard : null);
-    drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t);
-    drawSettingsEntry(context, metrics, visualSpec);
-    drawHomeFooter(context, metrics, hasSavedGame, visualSpec);
+    if (!initialExamChoiceVisible) {
+      drawPrimaryActions(context, metrics, hasSavedGame, visualSpec);
+      drawReturnCard(context, metrics, visualSpec, renderState ? renderState.homeReturnCard : null);
+    }
+    drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t, renderState);
+    if (!initialExamChoiceVisible) {
+      drawSettingsEntry(context, metrics, visualSpec);
+      drawHomeFooter(context, metrics, hasSavedGame, visualSpec);
+    }
+    drawLockedDifficultyDialog(context, metrics, visualSpec, renderState ? renderState.lockedDifficultyDialog : null);
   }
 
   function hitTest(x, y, state) {
@@ -658,17 +819,22 @@ function createHomeScene(options) {
       ? state.selectedDifficulty
       : "beginner";
     const pickerOpen = Boolean(state && state.difficultyPickerOpen);
+    const initialExamChoiceVisible = Boolean(state && state.initialExamChoiceVisible);
+    const lockedDifficultyDialog = state && state.lockedDifficultyDialog ? state.lockedDifficultyDialog : null;
+
+    if (initialExamChoiceVisible) {
+      for (let index = 0; index < DIFFICULTIES.length; index += 1) {
+        const difficulty = DIFFICULTIES[index];
+        const top = metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap);
+
+        if (isInsideRect(x, y, metrics.difficultyLeft, top, metrics.difficultyWidth, metrics.difficultyHeight)) {
+          return { type: "action", value: "start-initial-exam:" + difficulty };
+        }
+      }
+    }
 
     if (isInsideRect(x, y, metrics.primaryButtonLeft, metrics.primaryButtonTop, contentWidth, buttonHeight)) {
       return { type: "action", value: primaryAction };
-    }
-
-    if (
-      state &&
-      state.debugShortcutEnabled &&
-      isInsideRect(x, y, contentLeft, metrics.brandTop - 26, contentWidth, 52)
-    ) {
-      return { type: "action", value: "debug-near-complete" };
     }
 
     if (hasSavedGame && isInsideRect(x, y, metrics.secondaryButtonLeft, metrics.secondaryButtonTop, contentWidth, buttonHeight)) {
@@ -694,15 +860,46 @@ function createHomeScene(options) {
       for (let index = 0; index < selectableDifficulties.length; index += 1) {
         const difficulty = selectableDifficulties[index];
         const top = metrics.difficultyTop + (index + 1) * (metrics.difficultyHeight + metrics.difficultyGap);
+        const difficultyState = getDifficultyState(state, difficulty);
 
         if (isInsideRect(x, y, metrics.difficultyLeft, top, metrics.difficultyWidth, metrics.difficultyHeight)) {
-          return { type: "difficulty", value: difficulty };
+          return difficultyState.unlocked === false
+            ? { type: "locked-difficulty", value: difficulty }
+            : { type: "difficulty", value: difficulty };
         }
       }
     }
 
     if (isInsideRect(x, y, contentLeft, metrics.settingsTop, contentWidth, 46)) {
       return { type: "action", value: "settings" };
+    }
+
+    if (lockedDifficultyDialog) {
+      if (
+        isInsideRect(
+          x,
+          y,
+          metrics.lockedDialogExamLeft,
+          metrics.lockedDialogActionsTop - 12,
+          metrics.lockedDialogActionWidth,
+          metrics.lockedDialogActionHeight
+        )
+      ) {
+        return { type: "action", value: "start-locked-exam" };
+      }
+
+      if (
+        isInsideRect(
+          x,
+          y,
+          metrics.lockedDialogPointsLeft,
+          metrics.lockedDialogActionsTop - 12,
+          metrics.lockedDialogActionWidth,
+          metrics.lockedDialogActionHeight
+        )
+      ) {
+        return { type: "action", value: "view-locked-points" };
+      }
     }
 
     return null;

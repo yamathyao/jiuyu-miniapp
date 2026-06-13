@@ -15,6 +15,13 @@ const LOCALES = {
         playful: "从轻松一局开始，慢慢找到节奏。",
         pro: "进入专注解题状态。"
       },
+      initialExam: {
+        title: "首次进入，先完成一次难度测试",
+        subtitle: "在时限内完成，可解锁当前难度及以下难度",
+        fallback: "时间到了也可以继续做完，但这次测试不算通过，也不会获得积分",
+        entryTag: "难度测试",
+        entryAction: "点击开始"
+      },
       difficultyLabel: "难度选择",
       difficultyAction: {
         expand: "切换",
@@ -38,12 +45,25 @@ const LOCALES = {
         }
       },
       recentSummary: "最近完成：{difficulty} · {time}s · 连续 {streak} 天",
-      currentDifficulty: "当前难度: {difficulty}"
+      currentDifficulty: "当前难度: {difficulty}",
+      difficultyLocked: "未解锁",
+      lockedDialog: {
+        title: "{difficulty} 尚未解锁",
+        examAction: "参加考试",
+        pointsAction: "查看积分",
+        pointsProgress: "当前积分 {points} / {cost}",
+        pointsRemaining: "还差 {remaining} 积分解锁",
+        fallbackHint: "考试失败后可继续练习，但不计积分",
+        examUnlockHint: "通过考试可直接解锁当前难度"
+      }
     },
     settings: {
       title: "设置",
       pageTitle: "设置",
       subtitle: "在这里调整语言与挑战节奏。",
+      backHome: "回到首页",
+      resumeGameLabel: "回到游戏",
+      resumeGameHint: "返回当前棋盘，并继续这一局",
       languageLabel: "语言",
       languageAction: "选择",
       languageZh: "简体中文",
@@ -51,8 +71,11 @@ const LOCALES = {
       languageJa: "日本語",
       languageSummary: "当前语言：{language}",
       languageHint: "点开后直接选择并立即生效",
+      examHomeHint: "回到考试难度选择",
       restartLabel: "重开一局",
       restartHint: "按当前难度立即开始新棋局",
+      exitExamLabel: "退出考试",
+      exitExamHint: "退出后回普通首页，并按新手难度继续",
       difficultyLabel: "难度",
       difficultyHint: "挑战节奏",
       difficultyCurrent: "当前难度：{difficulty}",
@@ -63,7 +86,8 @@ const LOCALES = {
       difficultyExpertHint: "最冷静，也最专注",
       difficultyChanged: "已切换到{difficulty}难度，并开始新棋局。",
       helper: "可在这里调整语言等基础选项。",
-      helperFuture: "后续音效、视觉偏好或辅助能力都可继续放在这里。"
+      helperFuture: "后续音效、视觉偏好或辅助能力都可继续放在这里。",
+      examLockedHint: "考试进行中，当前仅支持返回首页和切换语言。"
     },
     languagePage: {
       title: "语言",
@@ -87,6 +111,8 @@ const LOCALES = {
       nextAction: "再来一局",
       homeAction: "回到首页",
       backToCompletion: "返回完成卡片",
+      pointsAwarded: "积分 +{points}",
+      pointsBlocked: "本局不计入积分",
       timeLabel: "用时",
       hintLabel: "提示",
       checkLabel: "检查",
@@ -109,7 +135,15 @@ const LOCALES = {
       }
     },
     board: {
-      timerLabel: "计时"
+      timerLabel: "计时",
+      examActive: "考试中",
+      examFailed: "考试未通过",
+      examDifficultyLabel: "{difficulty}考试",
+      examRemaining: "剩余 {time}"
+    },
+    share: {
+      friendTitle: "方庭九屿：一款本地优先的数独微信小游戏",
+      timelineTitle: "方庭九屿｜本地优先的数独小游戏"
     },
     toolbar: {
       note: "笔记",
@@ -182,6 +216,13 @@ const LOCALES = {
         playful: "Begin softly and settle in.",
         pro: "Find a focused solving rhythm."
       },
+      initialExam: {
+        title: "Choose an exam difficulty",
+        subtitle: "Pass to unlock this difficulty and below",
+        fallback: "You can still finish the run after timeout, but it earns no points",
+        entryTag: "Exam",
+        entryAction: "Tap to start"
+      },
       difficultyLabel: "Difficulty",
       difficultyAction: {
         expand: "Choose",
@@ -205,12 +246,25 @@ const LOCALES = {
         }
       },
       recentSummary: "Recent finish: {difficulty} · {time}s · streak {streak}",
-      currentDifficulty: "Current difficulty: {difficulty}"
+      currentDifficulty: "Current difficulty: {difficulty}",
+      difficultyLocked: "Locked",
+      lockedDialog: {
+        title: "{difficulty} is locked",
+        examAction: "Take exam",
+        pointsAction: "View points",
+        pointsProgress: "Points {points} / {cost}",
+        pointsRemaining: "{remaining} more points to unlock",
+        fallbackHint: "Failed exam runs can continue, but earn no points",
+        examUnlockHint: "Pass the exam to unlock this level directly"
+      }
     },
     settings: {
       title: "Settings",
       pageTitle: "Settings",
       subtitle: "Adjust language and challenge pace.",
+      backHome: "Back home",
+      resumeGameLabel: "Resume game",
+      resumeGameHint: "Return to the current board and keep solving",
       languageLabel: "Language",
       languageAction: "Choose",
       languageZh: "简体中文",
@@ -218,8 +272,11 @@ const LOCALES = {
       languageJa: "日本語",
       languageSummary: "Current language: {language}",
       languageHint: "Open and pick a language to apply it instantly",
+      examHomeHint: "Return to exam difficulty choice",
       restartLabel: "Restart run",
       restartHint: "Start a fresh puzzle at the current difficulty",
+      exitExamLabel: "Exit exam",
+      exitExamHint: "Return home and continue from Beginner difficulty",
       difficultyLabel: "Difficulty",
       difficultyHint: "Challenge rhythm",
       difficultyCurrent: "Current difficulty: {difficulty}",
@@ -230,7 +287,8 @@ const LOCALES = {
       difficultyExpertHint: "Calm, focused mode",
       difficultyChanged: "Switched to {difficulty} and started a new game.",
       helper: "Adjust your language and other foundational options here.",
-      helperFuture: "Sound, visual, and helper options can live here later."
+      helperFuture: "Sound, visual, and helper options can live here later.",
+      examLockedHint: "During an exam, only Home and language switching stay available."
     },
     languagePage: {
       title: "Language",
@@ -254,6 +312,8 @@ const LOCALES = {
       nextAction: "Play again",
       homeAction: "Back home",
       backToCompletion: "Back to summary",
+      pointsAwarded: "Points +{points}",
+      pointsBlocked: "No points awarded",
       timeLabel: "Time",
       hintLabel: "Hints",
       checkLabel: "Checks",
@@ -276,7 +336,15 @@ const LOCALES = {
       }
     },
     board: {
-      timerLabel: "Time"
+      timerLabel: "Time",
+      examActive: "Exam in progress",
+      examFailed: "Exam failed",
+      examDifficultyLabel: "{difficulty} Exam",
+      examRemaining: "Remaining {time}"
+    },
+    share: {
+      friendTitle: "Fangting Jiuyu: a local-first Sudoku WeChat game",
+      timelineTitle: "Fangting Jiuyu | A local-first Sudoku mini game"
     },
     toolbar: {
       note: "Notes",
@@ -349,6 +417,13 @@ const LOCALES = {
         playful: "やさしい一局から始めましょう。",
         pro: "集中して解き進めましょう。"
       },
+      initialExam: {
+        title: "最初に難易度テストを受けてください",
+        subtitle: "時間内にクリアすると、その難易度以下が解放されます",
+        fallback: "時間切れ後も続行できますが、不合格となりポイントも入りません",
+        entryTag: "難易度テスト",
+        entryAction: "タップして開始"
+      },
       difficultyLabel: "難易度",
       difficultyAction: {
         expand: "変更",
@@ -372,12 +447,25 @@ const LOCALES = {
         }
       },
       recentSummary: "最近の完了: {difficulty} · {time}秒 · 連続 {streak}日",
-      currentDifficulty: "現在の難易度: {difficulty}"
+      currentDifficulty: "現在の難易度: {difficulty}",
+      difficultyLocked: "未解放",
+      lockedDialog: {
+        title: "{difficulty} はまだ解放されていません",
+        examAction: "試験を受ける",
+        pointsAction: "ポイントを見る",
+        pointsProgress: "現在のポイント {points} / {cost}",
+        pointsRemaining: "解放まであと {remaining} ポイント",
+        fallbackHint: "試験に失敗しても練習は続けられますが、ポイントは加算されません",
+        examUnlockHint: "試験に合格するとこの難易度を直接解放できます"
+      }
     },
     settings: {
       title: "設定",
       pageTitle: "設定",
       subtitle: "言語とプレイテンポを調整できます。",
+      backHome: "ホームへ戻る",
+      resumeGameLabel: "ゲームに戻る",
+      resumeGameHint: "現在の盤面に戻って続けます",
       languageLabel: "言語",
       languageAction: "選択",
       languageZh: "简体中文",
@@ -385,8 +473,11 @@ const LOCALES = {
       languageJa: "日本語",
       languageSummary: "現在の言語: {language}",
       languageHint: "開いて選ぶとすぐに反映されます",
+      examHomeHint: "試験の難易度選択に戻る",
       restartLabel: "新しい一局を開始",
       restartHint: "現在の難易度で新しい盤面を始めます",
+      exitExamLabel: "試験を終了",
+      exitExamHint: "通常のホームへ戻り、初級難易度として続けます",
       difficultyLabel: "難易度",
       difficultyHint: "プレイテンポ",
       difficultyCurrent: "現在の難易度: {difficulty}",
@@ -397,7 +488,8 @@ const LOCALES = {
       difficultyExpertHint: "冷静に詰める上級者向け",
       difficultyChanged: "難易度を{difficulty}に切り替え、新しい盤面を開始しました。",
       helper: "基本設定はここで調整できます。",
-      helperFuture: "音や表示、補助設定も今後ここに追加できます。"
+      helperFuture: "音や表示、補助設定も今後ここに追加できます。",
+      examLockedHint: "試験中はホームへ戻ることと言語切替のみ利用できます。"
     },
     languagePage: {
       title: "言語",
@@ -421,6 +513,8 @@ const LOCALES = {
       nextAction: "もう一局",
       homeAction: "ホームへ",
       backToCompletion: "結果に戻る",
+      pointsAwarded: "ポイント +{points}",
+      pointsBlocked: "この一局はポイント対象外です",
       timeLabel: "時間",
       hintLabel: "ヒント",
       checkLabel: "チェック",
@@ -443,7 +537,15 @@ const LOCALES = {
       }
     },
     board: {
-      timerLabel: "時間"
+      timerLabel: "時間",
+      examActive: "試験中",
+      examFailed: "試験不合格",
+      examDifficultyLabel: "{difficulty}試験",
+      examRemaining: "残り {time}"
+    },
+    share: {
+      friendTitle: "方庭九屿：ローカルファーストの数独WeChatミニゲーム",
+      timelineTitle: "方庭九屿｜ローカルファーストの数独ミニゲーム"
     },
     toolbar: {
       note: "メモ",

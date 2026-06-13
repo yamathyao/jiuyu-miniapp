@@ -1,22 +1,25 @@
-const FRIEND_SHARE_TITLE = "方庭九屿：一款本地优先的数独微信小游戏";
-const TIMELINE_SHARE_TITLE = "方庭九屿｜本地优先的数独小游戏";
-
-function buildFriendSharePayload() {
+function buildFriendSharePayload(t) {
   return {
-    title: FRIEND_SHARE_TITLE
+    title: t("share.friendTitle")
   };
 }
 
-function buildTimelineSharePayload() {
+function buildTimelineSharePayload(t) {
   return {
-    title: TIMELINE_SHARE_TITLE
+    title: t("share.timelineTitle")
   };
 }
 
-function registerShareSupport(wxApi) {
+function registerShareSupport(wxApi, t) {
   if (!wxApi) {
     return;
   }
+
+  const translator = typeof t === "function"
+    ? t
+    : function (key) {
+        return key;
+      };
 
   if (typeof wxApi.showShareMenu === "function") {
     wxApi.showShareMenu({
@@ -27,20 +30,18 @@ function registerShareSupport(wxApi) {
 
   if (typeof wxApi.onShareAppMessage === "function") {
     wxApi.onShareAppMessage(function () {
-      return buildFriendSharePayload();
+      return buildFriendSharePayload(translator);
     });
   }
 
   if (typeof wxApi.onShareTimeline === "function") {
     wxApi.onShareTimeline(function () {
-      return buildTimelineSharePayload();
+      return buildTimelineSharePayload(translator);
     });
   }
 }
 
 module.exports = {
-  FRIEND_SHARE_TITLE,
-  TIMELINE_SHARE_TITLE,
   buildFriendSharePayload,
   buildTimelineSharePayload,
   registerShareSupport
