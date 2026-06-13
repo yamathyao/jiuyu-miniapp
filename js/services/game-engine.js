@@ -175,6 +175,33 @@ function undoLastStep(game) {
   };
 }
 
+function getHintRole(hintOptions, cellIndex) {
+  if (!hintOptions || hintOptions.hintTargetIndex < 0) {
+    return "";
+  }
+
+  if (cellIndex === hintOptions.hintTargetIndex) {
+    return "target";
+  }
+
+  if (hintOptions.hintRelatedIndexes.indexOf(cellIndex) < 0) {
+    return "";
+  }
+
+  if (hintOptions.hintDifficulty === "expert") {
+    return "related-strong";
+  }
+
+  if (
+    hintOptions.hintTechnique === "box-line-reduction" ||
+    hintOptions.hintContextPattern === "box-line"
+  ) {
+    return "related-strong";
+  }
+
+  return "related-soft";
+}
+
 function buildBoardView(game, selectedIndex, extraState) {
   const selectedCell = game.cells[selectedIndex];
   const selectedValue = selectedCell ? selectedCell.value : EMPTY_CELL;
@@ -185,6 +212,16 @@ function buildBoardView(game, selectedIndex, extraState) {
   const hintRelatedIndexes = extraState && Array.isArray(extraState.hintRelatedIndexes)
     ? extraState.hintRelatedIndexes
     : [];
+  const hintTechnique = extraState ? String(extraState.hintTechnique || "") : "";
+  const hintDifficulty = extraState ? String(extraState.hintDifficulty || game.difficulty || "") : "";
+  const hintContextPattern = extraState ? String(extraState.hintContextPattern || "") : "";
+  const hintOptions = {
+    hintTargetIndex: hintTargetIndex,
+    hintRelatedIndexes: hintRelatedIndexes,
+    hintTechnique: hintTechnique,
+    hintDifficulty: hintDifficulty,
+    hintContextPattern: hintContextPattern
+  };
 
   return game.cells.map(function (cell) {
     const hasValue = cell.value !== EMPTY_CELL;
@@ -202,7 +239,8 @@ function buildBoardView(game, selectedIndex, extraState) {
       hasNotes: hasNotes,
       issue: issueIndexes.indexOf(cell.index) >= 0,
       hintTarget: cell.index === hintTargetIndex,
-      hintRelated: hintRelatedIndexes.indexOf(cell.index) >= 0
+      hintRelated: hintRelatedIndexes.indexOf(cell.index) >= 0,
+      hintRole: getHintRole(hintOptions, cell.index)
     };
   });
 }

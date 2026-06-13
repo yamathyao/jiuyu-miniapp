@@ -1,5 +1,10 @@
 const { puzzles } = require("../js/data/puzzles");
 const { getRow, getColumn, getBox } = require("../js/utils/sudoku");
+const {
+  STRUCTURE_MINIMUMS,
+  groupPuzzlesByDifficulty,
+  findStructureShortfalls
+} = require("./puzzle-structure");
 
 const VALID_DIFFICULTIES = {
   beginner: true,
@@ -71,6 +76,9 @@ function validateSolutionUnits(puzzle, errors) {
 
 function validateHintMetadata(puzzle, errors) {
   if (!puzzle.hint) {
+    if (puzzle.difficulty === "skilled" || puzzle.difficulty === "expert") {
+      errors.push(puzzle.id + ": advanced puzzles must provide hint metadata.");
+    }
     return;
   }
 
@@ -169,6 +177,7 @@ function validatePuzzle(puzzle, seenIds, errors) {
 function validatePuzzleBank(sourcePuzzles) {
   const errors = [];
   const seenIds = {};
+  const seenDifficultyPuzzles = {};
 
   if (!Array.isArray(sourcePuzzles) || sourcePuzzles.length === 0) {
     errors.push("Puzzle bank must export a non-empty array.");
@@ -176,7 +185,28 @@ function validatePuzzleBank(sourcePuzzles) {
   }
 
   sourcePuzzles.forEach(function (puzzle) {
+    if (puzzle && typeof puzzle === "object") {
+      const difficultyKey = String(puzzle.difficulty || "unknown");
+      const puzzleKey = String(puzzle.puzzle || "");
+      const duplicateKey = difficultyKey + "::" + puzzleKey;
+
+      if (seenDifficultyPuzzles[duplicateKey]) {
+        errors.push(
+          (puzzle.id || "unknown") + ": duplicate puzzle layout for difficulty " + difficultyKey + "."
+        );
+      } else {
+        seenDifficultyPuzzles[duplicateKey] = true;
+      }
+    }
+
     validatePuzzle(puzzle, seenIds, errors);
+  });
+
+  const groupedPuzzles = groupPuzzlesByDifficulty(sourcePuzzles);
+  const structureErrors = findStructureShortfalls(groupedPuzzles, STRUCTURE_MINIMUMS);
+
+  structureErrors.forEach(function (error) {
+    errors.push(error);
   });
 
   return errors;

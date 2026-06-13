@@ -36,8 +36,19 @@ const {
   applyCompletionToStats
 } = require("../js/services/stats-service");
 const {
-  validatePuzzle
+  registerShareSupport
+} = require("../js/services/share-service");
+const {
+  validatePuzzle,
+  validatePuzzleBank
 } = require("../scripts/validate-puzzles");
+const {
+  STRUCTURE_MINIMUMS,
+  groupPuzzlesByDifficulty,
+  normalizePuzzleLayout,
+  summarizeStructureClusters,
+  findStructureShortfalls
+} = require("../scripts/puzzle-structure");
 const {
   getDifficultyPolicy
 } = require("../js/services/difficulty-policy");
@@ -125,6 +136,61 @@ test("buildBoardView carries issue and hint target flags for scene rendering", f
   assert.equal(boardView[11].hintTarget, true);
   assert.equal(boardView[0].hintRelated, true);
   assert.equal(boardView[36].hintRelated, true);
+});
+
+test("buildBoardView maps advanced hint roles across all supported high-level techniques", function () {
+  const nakedPairView = buildBoardView(createGame(puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-003";
+  })), -1, {
+    hintTargetIndex: 0,
+    hintRelatedIndexes: [1, 9],
+    hintTechnique: "naked-pair",
+    hintDifficulty: "skilled",
+    hintContextPattern: "pair"
+  });
+  const boxLineView = buildBoardView(createGame(puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-004";
+  })), -1, {
+    hintTargetIndex: 8,
+    hintRelatedIndexes: [17, 26],
+    hintTechnique: "box-line-reduction",
+    hintDifficulty: "skilled",
+    hintContextPattern: "box-line"
+  });
+  const xWingView = buildBoardView(createGame(puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-001";
+  })), -1, {
+    hintTargetIndex: 0,
+    hintRelatedIndexes: [1, 2, 9, 18],
+    hintTechnique: "x-wing",
+    hintDifficulty: "expert",
+    hintContextPattern: "row-column"
+  });
+  const xyWingView = buildBoardView(createGame(puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-002";
+  })), -1, {
+    hintTargetIndex: 55,
+    hintRelatedIndexes: [56, 54],
+    hintTechnique: "xy-wing",
+    hintDifficulty: "expert",
+    hintContextPattern: "pivot-wing"
+  });
+
+  assert.equal(nakedPairView[0].hintRole, "target");
+  assert.equal(nakedPairView[1].hintRole, "related-soft");
+  assert.equal(nakedPairView[9].hintRole, "related-soft");
+
+  assert.equal(boxLineView[8].hintRole, "target");
+  assert.equal(boxLineView[17].hintRole, "related-strong");
+  assert.equal(boxLineView[26].hintRole, "related-strong");
+
+  assert.equal(xWingView[0].hintRole, "target");
+  assert.equal(xWingView[1].hintRole, "related-strong");
+  assert.equal(xWingView[18].hintRole, "related-strong");
+
+  assert.equal(xyWingView[55].hintRole, "target");
+  assert.equal(xyWingView[56].hintRole, "related-strong");
+  assert.equal(xyWingView[54].hintRole, "related-strong");
 });
 
 test("createGame copies advanced hint metadata from the puzzle", function () {
@@ -329,6 +395,42 @@ test("loadCurrentGame returns the fallback session when storage API is missing",
   assert.equal(restored.noteMode, false);
 });
 
+test("home scene keeps the main layout slightly lower for the final visual balance", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = homeScene.getMetrics({
+    difficultyPickerOpen: false,
+    t: createTranslator("zh-CN")
+  });
+
+  assert.equal(metrics.brandTop, 154);
+  assert.equal(metrics.brandFrameTop, 86);
+  assert.equal(metrics.brandPanelTop, 94);
+  assert.equal(metrics.brandCoreTop, 104);
+  assert.equal(metrics.primaryButtonTop, 274);
+});
+
+test("settings and board scenes keep their main content slightly lower", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const languageScene = createLanguageScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+
+  assert.equal(settingsScene.getMetrics().backTop, 108);
+  assert.equal(boardScene.getMetrics().headerPanelTop, 82);
+  assert.equal(languageScene.getMetrics().shellTop, 144);
+});
+
 test("getDifficultyPolicy returns the expected hint and check rules", function () {
   assert.deepEqual(getDifficultyPolicy("beginner"), {
     difficulty: "beginner",
@@ -522,16 +624,86 @@ test("hint engine returns localized messages", function () {
     "先看第5行与第5宫的交界，这里有一个数字可以先确定。"
   );
   assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "direction",
+      targetIndex: 40
+    }, zh).message,
+    "第5行第5列这个格子已经可以确定。"
+  );
+  assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "cell",
+      targetIndex: 40
+    }, zh).message,
+    "第5行第5列这个格子现在只剩一个可以填的数字。"
+  );
+  assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "technique",
+      targetIndex: 40
+    }, zh).message,
+    "第5行第5列可以填写 5。"
+  );
+  assert.equal(
     getNextHint(game, "beginner", { currentLevel: null, targetIndex: -1 }, en).message,
     "Start with row 5 around box 5. One value can already be fixed there."
+  );
+  assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "direction",
+      targetIndex: 40
+    }, en).message,
+    "The cell at row 5, column 5 can already be determined."
+  );
+  assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "cell",
+      targetIndex: 40
+    }, en).message,
+    "The cell at row 5, column 5 now has only one possible number left."
+  );
+  assert.equal(
+    getNextHint(game, "beginner", {
+      currentLevel: "technique",
+      targetIndex: 40
+    }, en).message,
+    "Row 5, column 5 can be filled with 5."
   );
   assert.equal(
     getNextHint(game, "intermediate", { currentLevel: null, targetIndex: -1 }, zh).message,
     "先从第5行与第5宫入手，这一段已经能继续推进，但先别急着直接落子。"
   );
   assert.equal(
+    getNextHint(game, "intermediate", {
+      currentLevel: "direction",
+      targetIndex: 40
+    }, zh).message,
+    "先看第5行第5列，这个格子已经可以填写了。"
+  );
+  assert.equal(
+    getNextHint(game, "intermediate", {
+      currentLevel: "cell",
+      targetIndex: 40
+    }, zh).message,
+    "第5行第5列这个格子已经收束到唯一答案，可以直接填写。"
+  );
+  assert.equal(
     getNextHint(game, "intermediate", { currentLevel: null, targetIndex: -1 }, en).message,
     "Start with row 5 around box 5. This segment is ready to move, but hold the placement for a moment."
+  );
+  assert.equal(
+    getNextHint(game, "intermediate", {
+      currentLevel: "direction",
+      targetIndex: 40
+    }, en).message,
+    "Look at row 5, column 5 first. This cell can already be filled in."
+  );
+  assert.equal(
+    getNextHint(game, "intermediate", {
+      currentLevel: "cell",
+      targetIndex: 40
+    }, en).message,
+    "The cell at row 5, column 5 has narrowed down to one answer, so it can be filled in now."
   );
   assert.equal(
     getNextHint(game, "skilled", { currentLevel: null, targetIndex: -1 }, zh).message,
@@ -539,21 +711,21 @@ test("hint engine returns localized messages", function () {
   );
   assert.equal(
     getNextHint(expertGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
-    "Technique hint: X-Wing. Watch the linked row and column first."
+    "Compare these matched candidate positions. An X-Wing is already formed here."
   );
   assert.equal(
     getNextHint(skilledGame, "skilled", {
       currentLevel: "direction",
       targetIndex: -1
     }, en).message,
-    "Lean on the naked pair near R2C1 and keep the scan local before widening out."
+    "Focus on this paired candidate set. A Naked Pair is already in place and can narrow the grid further."
   );
   assert.equal(
     getNextHint(boxLineSkilledGame, "skilled", {
       currentLevel: "direction",
       targetIndex: -1
     }, en).message,
-    "Use the box-line reduction around R1C1 and keep the scan tight to that band first."
+    "Focus on the overlap between this box and its shared band. The candidates are already collapsing onto the same band."
   );
 });
 
@@ -576,11 +748,11 @@ test("expert technique hint wording changes with the tagged technique", function
 
   assert.equal(
     getNextHint(expertGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
-    "Technique hint: X-Wing. Watch the linked row and column first."
+    "Compare these matched candidate positions. An X-Wing is already formed here."
   );
   assert.equal(
     getNextHint(xyWingGame, "expert", { currentLevel: null, targetIndex: -1 }, en).message,
-    "Technique hint: XY-Wing. Watch the linked pivots first."
+    "Focus on the candidate links between the pivot and its two wings. An XY-Wing is already formed here."
   );
 });
 
@@ -697,9 +869,11 @@ test("getNextHint prefers authoritative metadata for advanced puzzles", function
 
 test("getNextHint falls back when advanced metadata is missing", function () {
   const skilledPuzzle = puzzles.find(function (puzzle) {
-    return puzzle.id === "skilled-003";
+    return puzzle.id === "skilled-010";
   });
-  const game = createGame(skilledPuzzle);
+  const game = createGame(Object.assign({}, skilledPuzzle, {
+    hint: null
+  }));
   const hint = getNextHint(game, "skilled", {
     currentLevel: null,
     targetIndex: -1,
@@ -707,7 +881,9 @@ test("getNextHint falls back when advanced metadata is missing", function () {
   });
 
   assert.equal(hint.technique, "naked-pair");
-  assert.equal(hint.targetIndex, 9);
+  assert.equal(skilledPuzzle.puzzle[hint.targetIndex], "0");
+  assert.equal(hint.targetIndex === skilledPuzzle.hint.targetIndex, false);
+  assert.deepEqual(hint.relatedIndexes, []);
 });
 
 test("getNextHint falls back safely when advanced metadata points at a given cell", function () {
@@ -743,7 +919,239 @@ test("advanced hint copy follows hint.primaryTechnique instead of techniques[0]"
   }, zh);
 
   assert.equal(hint.technique, "xy-wing");
-  assert.equal(hint.message, "技巧提示：XY-Wing。先看互相牵制的枢纽格。");
+  assert.equal(hint.message, "关注枢纽格与两侧翼格的候选关系；这里已形成 XY-Wing。");
+});
+
+test("new skilled hint coverage puzzles prefer authoritative metadata", function () {
+  const zh = createTranslator("zh-CN");
+  const puzzle003 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-003";
+  });
+  const puzzle004 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-004";
+  });
+
+  const hint003 = getNextHint(createGame(puzzle003), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+  const hint004 = getNextHint(createGame(puzzle004), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+
+  assert.equal(hint003.technique, "naked-pair");
+  assert.equal(hint003.targetIndex, 0);
+  assert.deepEqual(hint003.relatedIndexes, [1, 9]);
+
+  assert.equal(hint004.technique, "box-line-reduction");
+  assert.equal(hint004.targetIndex, 8);
+  assert.deepEqual(hint004.relatedIndexes, [17, 26]);
+});
+
+test("new expert hint coverage puzzles prefer authoritative metadata", function () {
+  const en = createTranslator("en");
+  const puzzle003 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-003";
+  });
+  const puzzle004 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-004";
+  });
+
+  const hint003 = getNextHint(createGame(puzzle003), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+  const hint004 = getNextHint(createGame(puzzle004), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+
+  assert.equal(hint003.technique, "x-wing");
+  assert.equal(hint003.targetIndex, 0);
+  assert.deepEqual(hint003.relatedIndexes, [1, 2, 9, 18]);
+
+  assert.equal(hint004.technique, "xy-wing");
+  assert.equal(hint004.targetIndex, 54);
+  assert.deepEqual(hint004.relatedIndexes, [45, 63]);
+});
+
+test("second-batch skilled hint coverage puzzles prefer authoritative metadata", function () {
+  const zh = createTranslator("zh-CN");
+  const puzzle005 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-005";
+  });
+  const puzzle006 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-006";
+  });
+
+  const hint005 = getNextHint(createGame(puzzle005), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+  const hint006 = getNextHint(createGame(puzzle006), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+
+  assert.equal(hint005.technique, "naked-pair");
+  assert.equal(hint005.targetIndex, 9);
+  assert.deepEqual(hint005.relatedIndexes, []);
+
+  assert.equal(hint006.technique, "naked-pair");
+  assert.equal(hint006.targetIndex, 9);
+  assert.deepEqual(hint006.relatedIndexes, []);
+});
+
+test("second-batch expert hint coverage puzzles prefer authoritative metadata", function () {
+  const en = createTranslator("en");
+  const puzzle005 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-005";
+  });
+  const puzzle006 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-006";
+  });
+
+  const hint005 = getNextHint(createGame(puzzle005), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+  const hint006 = getNextHint(createGame(puzzle006), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+
+  assert.equal(hint005.technique, "x-wing");
+  assert.equal(hint005.targetIndex, 0);
+  assert.deepEqual(hint005.relatedIndexes, [1, 2, 9, 18]);
+
+  assert.equal(hint006.technique, "x-wing");
+  assert.equal(hint006.targetIndex, 0);
+  assert.deepEqual(hint006.relatedIndexes, [1, 2, 9, 18]);
+});
+
+test("final-batch skilled hint coverage puzzles prefer authoritative metadata", function () {
+  const zh = createTranslator("zh-CN");
+  const puzzle009 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-009";
+  });
+  const puzzle010 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-010";
+  });
+
+  const hint009 = getNextHint(createGame(puzzle009), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+  const hint010 = getNextHint(createGame(puzzle010), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+
+  assert.equal(hint009.technique, "naked-pair");
+  assert.equal(hint009.targetIndex, 9);
+  assert.deepEqual(hint009.relatedIndexes, []);
+
+  assert.equal(hint010.technique, "naked-pair");
+  assert.equal(hint010.targetIndex, 0);
+  assert.deepEqual(hint010.relatedIndexes, [1, 9]);
+});
+
+test("polish-batch skilled hint coverage puzzles prefer authoritative metadata", function () {
+  const zh = createTranslator("zh-CN");
+  const puzzle011 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-011";
+  });
+  const puzzle012 = puzzles.find(function (puzzle) {
+    return puzzle.id === "skilled-012";
+  });
+
+  const hint011 = getNextHint(createGame(puzzle011), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+  const hint012 = getNextHint(createGame(puzzle012), "skilled", {
+    currentLevel: "direction",
+    targetIndex: -1,
+    relatedIndexes: []
+  }, zh);
+
+  assert.equal(hint011.technique, "box-line-reduction");
+  assert.equal(hint011.targetIndex, 0);
+  assert.deepEqual(hint011.relatedIndexes, [9, 18]);
+
+  assert.equal(hint012.technique, "naked-pair");
+  assert.equal(hint012.targetIndex, 0);
+  assert.deepEqual(hint012.relatedIndexes, [1, 9]);
+});
+
+test("final-batch expert hint coverage puzzles prefer authoritative metadata", function () {
+  const en = createTranslator("en");
+  const puzzle009 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-009";
+  });
+  const puzzle010 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-010";
+  });
+
+  const hint009 = getNextHint(createGame(puzzle009), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+  const hint010 = getNextHint(createGame(puzzle010), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+
+  assert.equal(hint009.technique, "x-wing");
+  assert.equal(hint009.targetIndex, 0);
+  assert.deepEqual(hint009.relatedIndexes, [1, 2, 9, 18]);
+
+  assert.equal(hint010.technique, "x-wing");
+  assert.equal(hint010.targetIndex, 0);
+  assert.deepEqual(hint010.relatedIndexes, [1, 2, 9, 18]);
+});
+
+test("polish-batch expert hint coverage puzzles prefer authoritative metadata", function () {
+  const en = createTranslator("en");
+  const puzzle011 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-011";
+  });
+  const puzzle012 = puzzles.find(function (puzzle) {
+    return puzzle.id === "expert-012";
+  });
+
+  const hint011 = getNextHint(createGame(puzzle011), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+  const hint012 = getNextHint(createGame(puzzle012), "expert", {
+    currentLevel: null,
+    targetIndex: -1,
+    relatedIndexes: []
+  }, en);
+
+  assert.equal(hint011.technique, "xy-wing");
+  assert.equal(hint011.targetIndex, 0);
+  assert.deepEqual(hint011.relatedIndexes, [1, 9, 36]);
+
+  assert.equal(hint012.technique, "x-wing");
+  assert.equal(hint012.targetIndex, 0);
+  assert.deepEqual(hint012.relatedIndexes, [1, 2, 9, 18]);
 });
 
 test("getThemeByDifficulty groups beginner and intermediate into a playful theme", function () {
@@ -1061,10 +1469,11 @@ test("home scene keeps a balanced vertical rhythm for the default layout", funct
     difficultyPickerOpen: false
   });
 
-  assert.ok(metrics.primaryButtonTop > 230);
-  assert.ok(metrics.primaryButtonTop < 255);
-  assert.ok(metrics.difficultyTop - metrics.secondaryButtonTop < 110);
-  assert.ok(metrics.settingsTop - metrics.difficultyTop < 110);
+  assert.ok(metrics.primaryButtonTop > 262);
+  assert.ok(metrics.primaryButtonTop < 287);
+  assert.ok(metrics.returnCardTop - metrics.secondaryButtonTop < 76);
+  assert.ok(metrics.difficultyTop - metrics.returnCardTop < 138);
+  assert.ok(metrics.settingsTop - metrics.difficultyTop < 104);
   assert.ok(metrics.footerTop - metrics.settingsTop < 80);
 });
 
@@ -1101,6 +1510,109 @@ test("home scene can show a recent completion summary under the footer status", 
   });
 
   assert.ok(drawnTexts.includes("最近完成：专家 · 280s · 连续 2 天"));
+});
+
+test("home scene surfaces a return-loop module with streak and result tags", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const drawnTexts = [];
+
+  homeScene.draw({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    clearRect: function () {},
+    fillRect: function () {},
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    },
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {}
+  }, {
+    hasSavedGame: true,
+    selectedDifficulty: "expert",
+    recentSummary: "最近完成：专家 · 280s · 连续 2 天",
+    homeReturnCard: {
+      title: "最近一局",
+      summary: "专家 · 280s",
+      streakLabel: "连续 2 天",
+      tags: ["零错误", "零提示"],
+      prompt: "继续这局，或者马上再开一局。"
+    },
+    t: createTranslator("zh-CN")
+  });
+
+  assert.ok(drawnTexts.includes("最近一局"));
+  assert.ok(drawnTexts.includes("专家 · 280s"));
+  assert.ok(drawnTexts.includes("连续 2 天"));
+  assert.ok(drawnTexts.includes("零错误"));
+  assert.ok(drawnTexts.includes("零提示"));
+  assert.ok(drawnTexts.includes("继续这局，或者马上再开一局。"));
+});
+
+test("home scene keeps the return-loop card secondary to the primary actions", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const fontCalls = [];
+  const context = {
+    _font: "",
+    fillStyle: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    clearRect: function () {},
+    fillRect: function () {},
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillText: function (text) {
+      fontCalls.push([String(text), this.font]);
+    }
+  };
+
+  Object.defineProperty(context, "font", {
+    get: function () {
+      return this._font;
+    },
+    set: function (value) {
+      this._font = value;
+    }
+  });
+
+  homeScene.draw(context, {
+    hasSavedGame: true,
+    selectedDifficulty: "expert",
+    homeReturnCard: {
+      title: "最近一局",
+      summary: "专家 · 280s",
+      streakLabel: "连续 2 天",
+      tags: ["零错误", "零提示"],
+      prompt: "继续这局，或者马上再开一局。"
+    },
+    t: createTranslator("zh-CN")
+  });
+
+  assert.ok(fontCalls.some(function (entry) {
+    return entry[0] === "继续游戏" && /bold 19px/.test(entry[1]);
+  }));
+  assert.ok(fontCalls.some(function (entry) {
+    return entry[0] === "最近一局" && /12px/.test(entry[1]);
+  }));
 });
 
 test("home scene keeps visual spec fields available for difficulty-based styling", function () {
@@ -1262,6 +1774,137 @@ test("board scene shows hint progress inside the feedback panel", function () {
   });
 
   assert.ok(drawnTexts.includes("2/4"));
+});
+
+test("board scene keeps hint progress visually lighter than the feedback text", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const fontCalls = [];
+  const context = {
+    _font: "",
+    fillStyle: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text) {
+      fontCalls.push([String(text), this.font]);
+    }
+  };
+
+  Object.defineProperty(context, "font", {
+    get: function () {
+      return this._font;
+    },
+    set: function (value) {
+      this._font = value;
+    }
+  });
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "先看这一片区域。",
+    feedbackType: "info",
+    hintProgress: {
+      current: 2,
+      total: 4
+    },
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    settingsLabel: "设置"
+  });
+
+  assert.ok(fontCalls.some(function (entry) {
+    return entry[0] === "先看这一片区域。" && /15px/.test(entry[1]);
+  }));
+  assert.ok(fontCalls.some(function (entry) {
+    return entry[0] === "2/4" && /11px/.test(entry[1]);
+  }));
+});
+
+test("board scene wraps hint text earlier when progress occupies the top-right corner", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const feedbackMessage = "alpha beta gamma delta";
+  
+  function countFeedbackLines(hintProgress) {
+    const messageDraws = [];
+    const context = {
+      fillStyle: "",
+      font: "",
+      textAlign: "",
+      textBaseline: "",
+      lineWidth: 1,
+      strokeStyle: "",
+      beginPath: function () {},
+      moveTo: function () {},
+      lineTo: function () {},
+      closePath: function () {},
+      fill: function () {},
+      stroke: function () {},
+      fillRect: function () {},
+      measureText: function (text) {
+        return { width: String(text).length * 13 };
+      },
+      fillText: function (text, x, y) {
+        const value = String(text);
+
+        if (feedbackMessage.indexOf(value) >= 0) {
+          messageDraws.push({
+            text: value,
+            x: x,
+            y: y
+          });
+        }
+      }
+    };
+
+    boardScene.draw(context, cells, {
+      theme: {},
+      feedbackMessage: feedbackMessage,
+      feedbackType: "info",
+      hintProgress: hintProgress,
+      completionSummary: null,
+      completionVisible: false,
+      statsOverlayVisible: false,
+      statsSnapshot: null,
+      t: createTranslator("zh-CN"),
+      title: "方庭九屿",
+      difficultyLabel: "新手",
+      settingsLabel: "设置"
+    });
+
+    return messageDraws.length;
+  }
+
+  const withoutProgressLines = countFeedbackLines(null);
+  const withProgressLines = countFeedbackLines({
+    current: 1,
+    total: 4
+  });
+
+  assert.ok(withProgressLines > withoutProgressLines);
 });
 
 test("board scene stats overlay shows completion count and average hints for the active difficulty", function () {
@@ -1483,6 +2126,133 @@ test("language scene exposes compact language options", function () {
   assert.equal(metrics.optionWidth < metrics.contentWidth, true);
 });
 
+test("language scene exposes three language options", function () {
+  const languageScene = createLanguageScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = languageScene.getMetrics();
+
+  assert.deepEqual(
+    languageScene.hitTest(
+      metrics.optionLeft + 20,
+      metrics.optionTop + (metrics.optionHeight + metrics.optionGap) * 2 + 20
+    ),
+    { type: "language", value: "ja" }
+  );
+});
+
+test("settings scene shows Japanese as the current language label", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const drawnTexts = [];
+
+  settingsScene.draw({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    }
+  }, {
+    language: "ja",
+    selectedDifficulty: "beginner",
+    t: createTranslator("ja")
+  });
+
+  assert.ok(drawnTexts.includes("日本語"));
+});
+
+test("board scene localizes streak labels inside stats overlay for Japanese", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const drawnTexts = [];
+  const context = {
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      return { width: String(text).length * 9 };
+    },
+    fillText: function (text) {
+      drawnTexts.push(String(text));
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: "",
+    feedbackType: "info",
+    hintProgress: null,
+    completionSummary: {
+      difficulty: "expert"
+    },
+    completionVisible: false,
+    statsOverlayVisible: true,
+    statsSnapshot: {
+      totalCompleted: 6,
+      currentStreakDays: 2,
+      bestStreakDays: 5,
+      bestTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 280
+      },
+      averageTimeByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 360
+      },
+      completionCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 3
+      },
+      hintCountByDifficulty: {
+        beginner: 0,
+        intermediate: 0,
+        skilled: 0,
+        expert: 6
+      }
+    },
+    t: createTranslator("ja"),
+    title: "方庭九屿",
+    difficultyLabel: "上級者向け",
+    settingsLabel: "設定"
+  });
+
+  assert.ok(drawnTexts.includes("現在の連続 2日"));
+  assert.ok(drawnTexts.includes("最長連続 5日"));
+});
+
 test("settings scene exposes four difficulty actions inside the page", function () {
   const settingsScene = createSettingsScene({
     canvasWidth: 375,
@@ -1576,6 +2346,22 @@ test("createCompletionSummary builds layered completion data", function () {
   assert.equal(summary.title, "已完成本局");
   assert.equal(summary.encouragement, "这是一局很克制的完成。");
   assert.deepEqual(summary.resultTags, ["零提示", "零错误", "一次完成"]);
+});
+
+test("createCompletionSummary localizes tags for Japanese", function () {
+  const ja = createTranslator("ja");
+  const summary = createCompletionSummary({
+    difficulty: "expert",
+    elapsedSeconds: 428,
+    hintCount: 0,
+    checkCount: 0,
+    mistakeCount: 0,
+    completedAt: "2026-06-09T10:00:00.000Z",
+    t: ja
+  });
+
+  assert.equal(summary.title, "盤面をクリアしました");
+  assert.deepEqual(summary.resultTags, ["ヒントなし", "ミスなし", "一発クリア"]);
 });
 
 test("buildCompletionTags can omit one-shot badge when checks already happened", function () {
@@ -1722,6 +2508,146 @@ test("validatePuzzle reports invalid advanced hint metadata", function () {
   ]);
 });
 
+test("validatePuzzle requires hint metadata for advanced puzzles", function () {
+  const errors = [];
+  const seenIds = {};
+
+  validatePuzzle({
+    id: "skilled-missing-hint",
+    difficulty: "skilled",
+    puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+    solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
+    techniques: ["naked-pair", "box-line-reduction"]
+  }, seenIds, errors);
+
+  assert.deepEqual(errors, [
+    "skilled-missing-hint: advanced puzzles must provide hint metadata."
+  ]);
+});
+
+test("normalizePuzzleLayout treats digit remaps as the same structure", function () {
+  const layoutA = "120".padEnd(81, "0");
+  const layoutB = "340".padEnd(81, "0");
+  const layoutC = "102".padEnd(81, "0");
+
+  assert.equal(normalizePuzzleLayout(layoutA), normalizePuzzleLayout(layoutB));
+  assert.notEqual(normalizePuzzleLayout(layoutA), normalizePuzzleLayout(layoutC));
+});
+
+test("summarizeStructureClusters groups ids by normalized layout", function () {
+  const summary = summarizeStructureClusters([
+    { id: "same-a", puzzle: "120".padEnd(81, "0") },
+    { id: "same-b", puzzle: "340".padEnd(81, "0") },
+    { id: "diff-c", puzzle: "102".padEnd(81, "0") }
+  ]);
+
+  assert.equal(summary.normalizedUnique, 2);
+  assert.deepEqual(summary.clusters, [
+    { size: 2, ids: ["same-a", "same-b"] },
+    { size: 1, ids: ["diff-c"] }
+  ]);
+});
+
+test("beginner and intermediate banks expose at least three structure prototypes", function () {
+  const groups = groupPuzzlesByDifficulty(puzzles);
+
+  assert.equal(
+    summarizeStructureClusters(groups.beginner).normalizedUnique >= STRUCTURE_MINIMUMS.beginner,
+    true
+  );
+  assert.equal(
+    summarizeStructureClusters(groups.intermediate).normalizedUnique >= STRUCTURE_MINIMUMS.intermediate,
+    true
+  );
+});
+
+test("skilled and expert banks expose at least four structure prototypes", function () {
+  const groups = groupPuzzlesByDifficulty(puzzles);
+
+  assert.equal(
+    summarizeStructureClusters(groups.skilled).normalizedUnique >= STRUCTURE_MINIMUMS.skilled,
+    true
+  );
+  assert.equal(
+    summarizeStructureClusters(groups.expert).normalizedUnique >= STRUCTURE_MINIMUMS.expert,
+    true
+  );
+});
+
+test("findStructureShortfalls reports the current minimum gap by difficulty", function () {
+  const errors = findStructureShortfalls({
+    beginner: [
+      { id: "same-a", puzzle: "120".padEnd(81, "0") },
+      { id: "same-b", puzzle: "340".padEnd(81, "0") }
+    ]
+  }, {
+    beginner: 3
+  });
+
+  assert.deepEqual(errors, [
+    "beginner: normalizedUnique 1 is below minimum 3."
+  ]);
+});
+
+test("validatePuzzleBank reports duplicate puzzle layouts within the same difficulty", function () {
+  const errors = validatePuzzleBank([
+    {
+      id: "skilled-dup-a",
+      difficulty: "skilled",
+      puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+      solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
+      techniques: ["naked-pair", "box-line-reduction"],
+      hint: {
+        primaryTechnique: "naked-pair",
+        targetIndex: 9,
+        relatedIndexes: [],
+        context: {
+          pattern: "pair"
+        }
+      }
+    },
+    {
+      id: "skilled-dup-b",
+      difficulty: "skilled",
+      puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+      solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
+      techniques: ["naked-pair", "box-line-reduction"],
+      hint: {
+        primaryTechnique: "box-line-reduction",
+        targetIndex: 8,
+        relatedIndexes: [17, 26],
+        context: {
+          pattern: "box-line"
+        }
+      }
+    }
+  ]);
+
+  assert.deepEqual(errors, [
+    "skilled-dup-b: duplicate puzzle layout for difficulty skilled.",
+    "skilled: normalizedUnique 1 is below minimum 4."
+  ]);
+});
+
+test("validatePuzzleBank reports structure diversity shortfalls", function () {
+  const errors = validatePuzzleBank([
+    {
+      id: "beginner-a",
+      difficulty: "beginner",
+      puzzle: "120".padEnd(81, "0"),
+      solution: "123456789456789123789123456214365897365897214897214365531642978642978531978531642",
+      techniques: ["naked-single"]
+    }
+  ]);
+
+  assert.equal(
+    errors.some(function (error) {
+      return /normalizedUnique .* below minimum/.test(error);
+    }),
+    true
+  );
+});
+
 test("puzzle data contains all four supported difficulties", function () {
   const difficulties = Array.from(new Set(puzzles.map(function (puzzle) {
     return puzzle.difficulty;
@@ -1743,6 +2669,10 @@ test("puzzle data contains all four supported difficulties", function () {
   assert.ok(countsByDifficulty.expert >= 10);
 });
 
+test("puzzle bank currently expands to 60 puzzles", function () {
+  assert.equal(puzzles.length, 60);
+});
+
 test("puzzle validation script accepts the current puzzle bank", function () {
   const result = childProcess.spawnSync("node", ["scripts/validate-puzzles.js"], {
     cwd: path.join(__dirname, ".."),
@@ -1753,18 +2683,22 @@ test("puzzle validation script accepts the current puzzle bank", function () {
   assert.match(result.stdout, /Puzzle validation passed/);
 });
 
-test("puzzle summary script reports counts and givens by difficulty", function () {
+test("puzzle summary script reports structure clusters by difficulty", function () {
   const result = childProcess.spawnSync("node", ["scripts/summarize-puzzles.js"], {
     cwd: path.join(__dirname, ".."),
     encoding: "utf8"
   });
 
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /beginner: count=10/);
-  assert.match(result.stdout, /intermediate: count=10/);
-  assert.match(result.stdout, /skilled: count=10/);
-  assert.match(result.stdout, /expert: count=10/);
+  assert.match(result.stdout, /beginner: count=15/);
+  assert.match(result.stdout, /intermediate: count=15/);
+  assert.match(result.stdout, /skilled: count=15/);
+  assert.match(result.stdout, /expert: count=15/);
   assert.match(result.stdout, /givens=/);
+  assert.match(result.stdout, /hintCoverage=/);
+  assert.match(result.stdout, /duplicatePuzzles=/);
+  assert.match(result.stdout, /normalizedUnique=/);
+  assert.match(result.stdout, /structureClusters=/);
 });
 
 test("harder difficulties start with fewer given cells than easier ones", function () {
@@ -1841,6 +2775,47 @@ test("skilled and expert puzzle metadata stays aligned with their intended techn
   });
 });
 
+test("registerShareSupport enables share menu and returns fixed share payloads", function () {
+  const calls = [];
+  let appMessageHandler = null;
+  let timelineHandler = null;
+
+  registerShareSupport({
+    showShareMenu: function (options) {
+      calls.push(["showShareMenu", options]);
+    },
+    onShareAppMessage: function (handler) {
+      appMessageHandler = handler;
+    },
+    onShareTimeline: function (handler) {
+      timelineHandler = handler;
+    }
+  });
+
+  assert.deepEqual(calls[0], ["showShareMenu", {
+    withShareTicket: true,
+    menus: ["shareAppMessage", "shareTimeline"]
+  }]);
+  assert.equal(typeof appMessageHandler, "function");
+  assert.equal(typeof timelineHandler, "function");
+  assert.deepEqual(appMessageHandler(), {
+    title: "方庭九屿：一款本地优先的数独微信小游戏"
+  });
+  assert.deepEqual(timelineHandler(), {
+    title: "方庭九屿｜本地优先的数独小游戏"
+  });
+});
+
+test("registerShareSupport degrades safely when share APIs are unavailable", function () {
+  assert.doesNotThrow(function () {
+    registerShareSupport({
+      showShareMenu: null,
+      onShareAppMessage: null,
+      onShareTimeline: null
+    });
+  });
+});
+
 test("main entry boots into the home screen using the stored language", function () {
   const texts = [];
   const originalWx = global.wx;
@@ -1899,6 +2874,341 @@ test("main entry boots into the home screen using the stored language", function
     assert.ok(texts.includes("方庭九屿"));
     assert.ok(texts.includes("Settings"));
     assert.ok(texts.includes("Current difficulty: Expert"));
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry enables WeChat share menu during boot", function () {
+  const calls = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function () {
+      return "";
+    },
+    onTouchStart: function () {},
+    showShareMenu: function (options) {
+      calls.push(["showShareMenu", options]);
+    },
+    onShareAppMessage: function (handler) {
+      calls.push(["onShareAppMessage", typeof handler]);
+    },
+    onShareTimeline: function (handler) {
+      calls.push(["onShareTimeline", typeof handler]);
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.deepEqual(calls[0], ["showShareMenu", {
+      withShareTicket: true,
+      menus: ["shareAppMessage", "shareTimeline"]
+    }]);
+    assert.deepEqual(calls[1], ["onShareAppMessage", "function"]);
+    assert.deepEqual(calls[2], ["onShareTimeline", "function"]);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry configures a high-DPR canvas during boot", function () {
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const scaleCalls = [];
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: function () {
+      return {
+        fillStyle: "",
+        font: "",
+        textAlign: "",
+        textBaseline: "",
+        lineWidth: 1,
+        clearRect: function () {},
+        fillRect: function () {},
+        beginPath: function () {},
+        moveTo: function () {},
+        lineTo: function () {},
+        stroke: function () {},
+        fill: function () {},
+        arcTo: function () {},
+        closePath: function () {},
+        fillText: function () {},
+        scale: function (x, y) {
+          scaleCalls.push([x, y]);
+        }
+      };
+    }
+  };
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return canvas;
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getWindowInfo: function () {
+      return {
+        windowWidth: 375,
+        windowHeight: 812,
+        pixelRatio: 3
+      };
+    },
+    getStorageSync: function () {
+      return "";
+    },
+    onTouchStart: function () {}
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(canvas.width, 1125);
+    assert.equal(canvas.height, 2436);
+    assert.deepEqual(scaleCalls[0], [3, 3]);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry advances and persists elapsed time during an active game", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  let tick = null;
+
+  delete require.cache[mainPath];
+  global.setInterval = function (handler) {
+    tick = handler;
+    return 1;
+  };
+  global.clearInterval = function () {};
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(text);
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+    assert.equal(typeof tick, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    tick();
+    tick();
+
+    assert.ok(texts.includes("计时 00:02"));
+    const savedSession = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+    assert.ok(savedSession);
+    assert.equal(savedSession[1].game.elapsedSeconds, 2);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+});
+
+test("main entry treats a completed saved game as a finished run instead of a resumable game", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const expertPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "expert";
+  });
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) {
+              texts.push(text);
+            }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "expert",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.currentGame) {
+        return {
+          game: {
+            puzzleId: expertPuzzle.id,
+            difficulty: expertPuzzle.difficulty,
+            puzzle: expertPuzzle.puzzle,
+            solution: expertPuzzle.solution,
+            cells: expertPuzzle.solution.split("").map(function (value, index) {
+              return {
+                index: index,
+                value: value,
+                given: expertPuzzle.puzzle[index] !== "0",
+                notes: []
+              };
+            }),
+            elapsedSeconds: 428,
+            mistakes: 0,
+            hintsUsed: 0,
+            history: []
+          },
+          selectedIndex: -1,
+          noteMode: false
+        };
+      }
+
+      return "";
+    },
+    onTouchStart: function () {}
+  };
+
+  try {
+    require("../js/main");
+    assert.ok(texts.includes("开始新局"));
+    assert.ok(!texts.includes("继续游戏"));
+    assert.ok(texts.includes("还没有可继续的棋局"));
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -2004,17 +3314,17 @@ test("main entry can open settings from home and switch language inline", functi
       touches: [
         {
           clientX: languageMetrics.optionLeft + 20,
-          clientY: languageMetrics.optionTop + languageMetrics.optionHeight + languageMetrics.optionGap + 20
+          clientY: languageMetrics.optionTop + (languageMetrics.optionHeight + languageMetrics.optionGap) * 2 + 20
         }
       ]
     });
 
-    assert.ok(texts.includes("设置"));
+    assert.ok(texts.includes("日本語"));
     const savedSettings = writes.filter(function (entry) {
       return entry[0] === STORAGE_KEYS.settings;
     }).pop();
     assert.ok(savedSettings);
-    assert.equal(savedSettings[1].language, "en");
+    assert.equal(savedSettings[1].language, "ja");
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -2629,6 +3939,18 @@ test("theme policy exposes grouped visual tokens for playful and pro modes", fun
   assert.equal(typeof pro.hintRelated, "string");
 });
 
+test("theme policy exposes layered hint tokens for playful and pro modes", function () {
+  const playful = getThemeByDifficulty("beginner");
+  const pro = getThemeByDifficulty("expert");
+
+  assert.equal(typeof playful.hintTarget, "string");
+  assert.equal(typeof playful.hintRelatedSoft, "string");
+  assert.equal(typeof playful.hintRelatedStrong, "string");
+  assert.equal(typeof pro.hintTarget, "string");
+  assert.equal(typeof pro.hintRelatedSoft, "string");
+  assert.equal(typeof pro.hintRelatedStrong, "string");
+});
+
 test("home scene exposes a playful visual spec for beginner difficulty", function () {
   const homeScene = createHomeScene({
     canvasWidth: 375,
@@ -2726,15 +4048,18 @@ test("home scene keeps the same brand title font across playful and pro difficul
 test("normalizeLocale falls back to zh-CN for unsupported languages", function () {
   assert.equal(DEFAULT_LOCALE, "zh-CN");
   assert.equal(normalizeLocale("en"), "en");
+  assert.equal(normalizeLocale("ja"), "ja");
   assert.equal(normalizeLocale("fr"), "zh-CN");
 });
 
 test("createTranslator returns translated difficulty labels and interpolated copy", function () {
   const zh = createTranslator("zh-CN");
   const en = createTranslator("en");
+  const ja = createTranslator("ja");
 
   assert.equal(zh("difficulty.beginner"), "新手");
   assert.equal(en("difficulty.beginner"), "Beginner");
+  assert.equal(ja("difficulty.beginner"), "初級");
   assert.equal(
     zh("settings.difficultyChanged", {
       difficulty: zh("difficulty.expert")
@@ -2753,4 +4078,31 @@ test("createTranslator returns translated difficulty labels and interpolated cop
     }),
     "Switched to Expert and started a new game."
   );
+  assert.equal(ja("settings.title"), "設定");
+  assert.equal(
+    ja("settings.difficultyChanged", {
+      difficulty: ja("difficulty.expert")
+    }),
+    "難易度を上級者向けに切り替え、新しい盤面を開始しました。"
+  );
+});
+
+test("createTranslator exposes home return-loop copy", function () {
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+
+  assert.equal(zh("home.returnCard.title"), "最近一局");
+  assert.equal(zh("home.returnCard.prompt.hasSave"), "继续这局，或马上新开。");
+  assert.equal(en("home.returnCard.title"), "Recent run");
+  assert.equal(en("home.returnCard.prompt.noSave"), "Start fresh and keep the streak going.");
+});
+
+test("createTranslator exposes shorter home support copy", function () {
+  const zh = createTranslator("zh-CN");
+  const en = createTranslator("en");
+
+  assert.equal(zh("home.status.hasSave"), "可继续上局");
+  assert.equal(zh("home.returnCard.prompt.hasSave"), "继续这局，或马上新开。");
+  assert.equal(en("home.status.hasSave"), "Continue your last run.");
+  assert.equal(en("home.returnCard.prompt.noSave"), "Start fresh and keep the streak going.");
 });

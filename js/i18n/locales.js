@@ -1,7 +1,8 @@
 const LOCALES = {
   "zh-CN": {
     common: {
-      back: "返回"
+      back: "返回",
+      secondsShort: "s"
     },
     difficulty: {
       beginner: "新手",
@@ -24,8 +25,17 @@ const LOCALES = {
         newGame: "开始新局"
       },
       status: {
-        hasSave: "可继续上次对局",
-        noSave: "还没有可继续的对局"
+        hasSave: "可继续上局",
+        noSave: "还没有可继续的棋局"
+      },
+      returnCard: {
+        title: "最近一局",
+        summary: "{difficulty} · {time}s",
+        streakLabel: "连续 {streak} 天",
+        prompt: {
+          hasSave: "继续这局，或马上新开。",
+          noSave: "新开一局，把节奏续上。"
+        }
       },
       recentSummary: "最近完成：{difficulty} · {time}s · 连续 {streak} 天",
       currentDifficulty: "当前难度: {difficulty}"
@@ -38,6 +48,7 @@ const LOCALES = {
       languageAction: "选择",
       languageZh: "简体中文",
       languageEn: "English",
+      languageJa: "日本語",
       languageSummary: "当前语言：{language}",
       languageHint: "点开后直接选择并立即生效",
       restartLabel: "重开一局",
@@ -85,10 +96,20 @@ const LOCALES = {
       statsCompletedLabel: "当前难度完成",
       statsCurrentStreakLabel: "当前连续",
       statsBestStreakLabel: "最佳连续",
+      statsCurrentStreakValue: "当前连续 {streak} 天",
+      statsBestStreakValue: "最佳连续 {streak} 天",
       statsBestLabel: "当前难度最好",
       statsAverageLabel: "当前难度平均",
       statsHintsLabel: "当前难度提示",
-      statsHintsAverageLabel: "当前难度平均提示"
+      statsHintsAverageLabel: "当前难度平均提示",
+      tags: {
+        zeroHints: "零提示",
+        zeroMistakes: "零错误",
+        oneShot: "一次完成"
+      }
+    },
+    board: {
+      timerLabel: "计时"
     },
     toolbar: {
       note: "笔记",
@@ -100,28 +121,28 @@ const LOCALES = {
     hint: {
       beginner: {
         direction: "先看第{row}行与第{box}宫的交界，这里有一个数字可以先确定。",
-        cell: "R{row}C{column} 这个格子已经可以确定。",
-        technique: "这里是 Naked Single，R{row}C{column} 的候选数只剩一个。",
-        answer: "R{row}C{column} 可以填写 {value}。"
+        cell: "第{row}行第{column}列这个格子已经可以确定。",
+        technique: "第{row}行第{column}列这个格子现在只剩一个可以填的数字。",
+        answer: "第{row}行第{column}列可以填写 {value}。"
       },
       intermediate: {
         direction: "先从第{row}行与第{box}宫入手，这一段已经能继续推进，但先别急着直接落子。",
-        cell: "把注意力放在 R{row}C{column}，这里已经可以落子。",
-        technique: "这里能用 Naked Single，R{row}C{column} 的候选数已经收束到唯一答案。"
+        cell: "先看第{row}行第{column}列，这个格子已经可以填写了。",
+        technique: "第{row}行第{column}列这个格子已经收束到唯一答案，可以直接填写。"
       },
       skilled: {
         direction: "先看第{row}行与第{box}宫的交界，只收这片范围，先别把视线放大。",
         technique: "这里可以直接利用 Naked Single，R{row}C{column} 不必再扩散检查。",
         techniqueByTechnique: {
-          "box-line-reduction": "先利用 Box-Line Reduction，把注意力收在 R{row}C{column} 周围这一带。",
-          "naked-pair": "这里的 Naked Pair 已经成形，先围绕 R{row}C{column} 收窄候选，再决定要不要外扩。 "
+          "box-line-reduction": "关注这一宫与同带的交界，候选已经开始向同一条带收束。",
+          "naked-pair": "关注这组并排候选，Naked Pair 已经成形，可继续收窄。"
         }
       },
       expert: {
         technique: "技巧提示：{technique}。",
         techniqueByTechnique: {
-          "x-wing": "技巧提示：X-Wing。先看关联的行列。",
-          "xy-wing": "技巧提示：XY-Wing。先看互相牵制的枢纽格。"
+          "x-wing": "比较这两组对应候选落点；这里已形成 X-Wing。",
+          "xy-wing": "关注枢纽格与两侧翼格的候选关系；这里已形成 XY-Wing。"
         }
       },
       fallback: {
@@ -147,7 +168,8 @@ const LOCALES = {
   },
   en: {
     common: {
-      back: "Back"
+      back: "Back",
+      secondsShort: "s"
     },
     difficulty: {
       beginner: "Beginner",
@@ -170,8 +192,17 @@ const LOCALES = {
         newGame: "New Game"
       },
       status: {
-        hasSave: "Your last game is ready to continue.",
-        noSave: "No game is ready to continue yet."
+        hasSave: "Continue your last run.",
+        noSave: "No run to continue yet."
+      },
+      returnCard: {
+        title: "Recent run",
+        summary: "{difficulty} · {time}s",
+        streakLabel: "Streak {streak} days",
+        prompt: {
+          hasSave: "Continue this run or start fresh.",
+          noSave: "Start fresh and keep the streak going."
+        }
       },
       recentSummary: "Recent finish: {difficulty} · {time}s · streak {streak}",
       currentDifficulty: "Current difficulty: {difficulty}"
@@ -184,6 +215,7 @@ const LOCALES = {
       languageAction: "Choose",
       languageZh: "简体中文",
       languageEn: "English",
+      languageJa: "日本語",
       languageSummary: "Current language: {language}",
       languageHint: "Open and pick a language to apply it instantly",
       restartLabel: "Restart run",
@@ -231,10 +263,20 @@ const LOCALES = {
       statsCompletedLabel: "Completed at this level",
       statsCurrentStreakLabel: "Current streak",
       statsBestStreakLabel: "Best streak",
+      statsCurrentStreakValue: "Current streak {streak} days",
+      statsBestStreakValue: "Best streak {streak} days",
       statsBestLabel: "Best at this level",
       statsAverageLabel: "Average at this level",
       statsHintsLabel: "Hints at this level",
-      statsHintsAverageLabel: "Average hints at this level"
+      statsHintsAverageLabel: "Average hints at this level",
+      tags: {
+        zeroHints: "No hints",
+        zeroMistakes: "No mistakes",
+        oneShot: "One-shot clear"
+      }
+    },
+    board: {
+      timerLabel: "Time"
     },
     toolbar: {
       note: "Notes",
@@ -246,28 +288,28 @@ const LOCALES = {
     hint: {
       beginner: {
         direction: "Start with row {row} around box {box}. One value can already be fixed there.",
-        cell: "Cell R{row}C{column} can already be determined.",
-        technique: "Naked Single: R{row}C{column} has only one candidate left.",
-        answer: "R{row}C{column} can be filled with {value}."
+        cell: "The cell at row {row}, column {column} can already be determined.",
+        technique: "The cell at row {row}, column {column} now has only one possible number left.",
+        answer: "Row {row}, column {column} can be filled with {value}."
       },
       intermediate: {
         direction: "Start with row {row} around box {box}. This segment is ready to move, but hold the placement for a moment.",
-        cell: "Focus on R{row}C{column}. It can be placed now.",
-        technique: "Use a Naked Single here. R{row}C{column} already collapses to one candidate."
+        cell: "Look at row {row}, column {column} first. This cell can already be filled in.",
+        technique: "The cell at row {row}, column {column} has narrowed down to one answer, so it can be filled in now."
       },
       skilled: {
         direction: "Check the overlap between row {row} and box {box}. Keep the scan inside that pocket before widening out.",
         technique: "A Naked Single is enough here: R{row}C{column}. No wider scan is needed.",
         techniqueByTechnique: {
-          "box-line-reduction": "Use the box-line reduction around R{row}C{column} and keep the scan tight to that band first.",
-          "naked-pair": "Lean on the naked pair near R{row}C{column} and keep the scan local before widening out."
+          "box-line-reduction": "Focus on the overlap between this box and its shared band. The candidates are already collapsing onto the same band.",
+          "naked-pair": "Focus on this paired candidate set. A Naked Pair is already in place and can narrow the grid further."
         }
       },
       expert: {
         technique: "Technique hint: {technique}.",
         techniqueByTechnique: {
-          "x-wing": "Technique hint: X-Wing. Watch the linked row and column first.",
-          "xy-wing": "Technique hint: XY-Wing. Watch the linked pivots first."
+          "x-wing": "Compare these matched candidate positions. An X-Wing is already formed here.",
+          "xy-wing": "Focus on the candidate links between the pivot and its two wings. An XY-Wing is already formed here."
         }
       },
       fallback: {
@@ -288,6 +330,173 @@ const LOCALES = {
         intermediate: "This step looks clean for now.",
         skilled: "No conflicts right now.",
         expert: "No conflicts found."
+      }
+    }
+  },
+  ja: {
+    common: {
+      back: "戻る",
+      secondsShort: "秒"
+    },
+    difficulty: {
+      beginner: "初級",
+      intermediate: "中級",
+      skilled: "上級",
+      expert: "上級者向け"
+    },
+    home: {
+      subtitle: {
+        playful: "やさしい一局から始めましょう。",
+        pro: "集中して解き進めましょう。"
+      },
+      difficultyLabel: "難易度",
+      difficultyAction: {
+        expand: "変更",
+        collapse: "閉じる"
+      },
+      primary: {
+        continue: "続きから",
+        newGame: "新しい一局"
+      },
+      status: {
+        hasSave: "前回の続きから遊べます。",
+        noSave: "続きの盤面はまだありません。"
+      },
+      returnCard: {
+        title: "最近の一局",
+        summary: "{difficulty} · {time}秒",
+        streakLabel: "連続 {streak}日",
+        prompt: {
+          hasSave: "この一局を続けるか、新しく始めます。",
+          noSave: "新しい一局を始めて流れをつなげましょう。"
+        }
+      },
+      recentSummary: "最近の完了: {difficulty} · {time}秒 · 連続 {streak}日",
+      currentDifficulty: "現在の難易度: {difficulty}"
+    },
+    settings: {
+      title: "設定",
+      pageTitle: "設定",
+      subtitle: "言語とプレイテンポを調整できます。",
+      languageLabel: "言語",
+      languageAction: "選択",
+      languageZh: "简体中文",
+      languageEn: "English",
+      languageJa: "日本語",
+      languageSummary: "現在の言語: {language}",
+      languageHint: "開いて選ぶとすぐに反映されます",
+      restartLabel: "新しい一局を開始",
+      restartHint: "現在の難易度で新しい盤面を始めます",
+      difficultyLabel: "難易度",
+      difficultyHint: "プレイテンポ",
+      difficultyCurrent: "現在の難易度: {difficulty}",
+      difficultySummary: "現在の難易度: {difficulty}",
+      difficultyBeginnerHint: "やさしい進行でヒントも多め",
+      difficultyIntermediateHint: "落ち着いて考えやすいバランス",
+      difficultySkilledHint: "テンポ重視でチェックは控えめ",
+      difficultyExpertHint: "冷静に詰める上級者向け",
+      difficultyChanged: "難易度を{difficulty}に切り替え、新しい盤面を開始しました。",
+      helper: "基本設定はここで調整できます。",
+      helperFuture: "音や表示、補助設定も今後ここに追加できます。"
+    },
+    languagePage: {
+      title: "言語",
+      subtitle: "表示する言語を選択してください。",
+      applied: "選択するとすぐに反映されます"
+    },
+    completion: {
+      titleByDifficulty: {
+        beginner: "この一局をクリアしました",
+        intermediate: "安定してクリアしました",
+        skilled: "この一局を突破しました",
+        expert: "盤面をクリアしました"
+      },
+      encouragementByDifficulty: {
+        beginner: "いい流れです。このまま続けましょう。",
+        intermediate: "落ち着いた解き方ができています。",
+        skilled: "テンポよく進められています。さらに上を狙えます。",
+        expert: "無駄の少ない解き切りでした。"
+      },
+      statsAction: "統計を見る",
+      nextAction: "もう一局",
+      homeAction: "ホームへ",
+      backToCompletion: "結果に戻る",
+      timeLabel: "時間",
+      hintLabel: "ヒント",
+      checkLabel: "チェック",
+      mistakeLabel: "ミス",
+      statsTitle: "ローカル統計",
+      statsTotalLabel: "累計クリア",
+      statsCompletedLabel: "この難易度のクリア数",
+      statsCurrentStreakLabel: "現在の連続",
+      statsBestStreakLabel: "最長連続",
+      statsCurrentStreakValue: "現在の連続 {streak}日",
+      statsBestStreakValue: "最長連続 {streak}日",
+      statsBestLabel: "この難易度の最速",
+      statsAverageLabel: "この難易度の平均",
+      statsHintsLabel: "この難易度のヒント数",
+      statsHintsAverageLabel: "この難易度の平均ヒント",
+      tags: {
+        zeroHints: "ヒントなし",
+        zeroMistakes: "ミスなし",
+        oneShot: "一発クリア"
+      }
+    },
+    board: {
+      timerLabel: "時間"
+    },
+    toolbar: {
+      note: "メモ",
+      undo: "元に戻す",
+      erase: "消す",
+      hint: "ヒント",
+      check: "チェック"
+    },
+    hint: {
+      beginner: {
+        direction: "まずは{row}行と{box}ボックスの重なりを見ましょう。ここで1マス確定できます。",
+        cell: "{row}行{column}列はもう確定できます。",
+        technique: "{row}行{column}列は入る数字が1つに絞れています。",
+        answer: "{row}行{column}列には {value} を入れます。"
+      },
+      intermediate: {
+        direction: "まずは{row}行と{box}ボックスの重なりを見ると、次に進めます。",
+        cell: "まず{row}行{column}列を見てください。このマスは埋められます。",
+        technique: "{row}行{column}列は候補が1つに絞れているので、そのまま確定できます。"
+      },
+      skilled: {
+        direction: "{row}行と{box}ボックスの重なりに絞って見てください。この範囲だけで前進できます。",
+        technique: "ここは候補が1つに絞れています。{row}行{column}列を確定できます。",
+        techniqueByTechnique: {
+          "box-line-reduction": "このボックスと同じ帯の重なりに注目してください。候補が同じ帯に寄っています。",
+          "naked-pair": "この2つの候補の組に注目してください。同じ2候補だけが残っていて、他を絞れます。"
+        }
+      },
+      expert: {
+        technique: "手筋ヒント: {technique}。",
+        techniqueByTechnique: {
+          "x-wing": "対応する候補位置を比べると、ここで X-Wing が成立しています。",
+          "xy-wing": "枢軸マスと両翼マスの候補関係を見ると、ここで XY-Wing が成立しています。"
+        }
+      },
+      fallback: {
+        direction: "まずは{row}行と{box}ボックスの重なりを狭めましょう。",
+        cell: "{row}行{column}列はもう確定できます。",
+        technique: "ここは候補が1つだけなので、{row}行{column}列を確定できます。"
+      }
+    },
+    check: {
+      hasIssueByDifficulty: {
+        beginner: "修正が必要な入力があります。",
+        intermediate: "入力を見直したい場所があります。",
+        skilled: "競合があります。先に解消してください。",
+        expert: "競合があります。"
+      },
+      cleanByDifficulty: {
+        beginner: "今のところ修正が必要な箇所はありません。",
+        intermediate: "この手順に目立つ問題はありません。",
+        skilled: "今のところ競合はありません。",
+        expert: "競合は見つかっていません。"
       }
     }
   }

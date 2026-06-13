@@ -1,196 +1,107 @@
-# 方庭九屿 Jiuyu Miniapp
+# 方庭九屿
 
-> 一款日常可玩、专业可调的数独微信小游戏。  
-> A Sudoku WeChat Minigame designed to be friendly for daily play and precise enough for serious solving.
+一款本地优先、支持分层提示的数独微信小游戏。
 
-🧩 **当前阶段 / Status:** 小游戏主循环、四档难度、分层提示、本地统计与完成反馈已接通，当前下一阶段是继续扩题并补更多高阶技巧体验。  
-📱 **平台 / Platform:** 微信小游戏 / WeChat Minigame  
-🌿 **策略 / Strategy:** 本地优先 / Local-first
+## 简介
 
-## ✨ 简介 / Introduction
+方庭九屿聚焦单人本地数独体验：打开快、棋盘顺、支持继续上一局，并通过按难度分层的提示与检查，兼顾新手可上手和熟练玩家可专注。
 
-**方庭九屿** 是一个数独小程序项目。“九”对应数独中的九个 3x3 宫格，“屿”代表彼此独立又互相连接的解题区域。这个名字希望带来一种清爽、安静、轻微有趣的数独体验：不像传统工具那样冷，也不把数独做成过度闯关游戏。
+当前版本已经完成完整主循环，包含首页、棋盘、设置、语言切换、局内计时、完成反馈、本地统计，以及微信原生分享能力，适合作为可直接继续打磨和发布的产品基线。
 
-首版的核心目标不是堆功能，而是先打磨一个稳定顺手的单人本地数独闭环：打开快、棋盘顺、可持续继续一局，再逐步恢复提示、统计和完成反馈。
+## 核心特性
 
-**Jiuyu** is a Sudoku minigame project. The name hints at the nine 3x3 regions of a Sudoku board as small connected islands. The product direction is calm, lightweight, and slightly playful: more approachable than a strict puzzle tool, but more focused than a casual mini-game.
+- 四档难度：`beginner / intermediate / skilled / expert`
+- 三语言界面：`简体中文 / English / 日本語`
+- 棋盘核心交互：选格、填数、笔记、擦除、撤销、高亮
+- 局内计时：单局秒表持续推进，完成结算复用同一份用时数据
+- 本地存档：自动保存当前局面；未完成棋局支持继续游戏，已完成棋局返回首页后按新局处理
+- 分层提示：按难度提供不同强度的方向提示、格位提示和技巧提示
+- 分级检查：根据难度控制检查反馈的严格程度
+- 完成反馈：完成卡片、结果标签与回流入口
+- 本地统计：完成数、平均时间、平均提示数、连续天数
+- 微信原生分享：支持右上角菜单分享给好友、分享到朋友圈
+- 高分屏适配：按设备像素比初始化画布，提升真机清晰度
+- 首页布局收口：品牌卡片、主按钮与设置区已按真机观感完成下移和顶部装饰精简
+- 结构化题库：带校验与摘要脚本，约束题库结构多样性
 
-The first release focuses on the core local Sudoku loop: fast launch, smooth board interaction, useful hints, stable progress, and a reason to come back every day.
+## 体验定位
 
-## 🧭 产品定位 / Product Positioning
+- 日常可玩：适合随时打开完成一局
+- 专业可调：高难度下提示更克制、更技术性
+- 本地优先：不依赖登录、云端和外部服务
+- 反馈克制：强调稳定、清晰、不过度打扰
 
-| 中文 | English |
-|---|---|
-| 日常可玩 | Easy to open and play every day |
-| 专业可调 | Assistance can be tuned for serious solvers |
-| 本地优先 | Local-first puzzle bank, progress, and stats |
-| 提示有教学感 | Hints should teach, not only reveal answers |
-| 克制但不冷淡 | Calm visual design with gentle feedback |
-
-## 🧩 核心功能 / Features
-
-### 🎯 当前主线 / Current Mainline
-
-- **本地题库 / Local puzzle bank**  
-  内置题目，减少对网络和账号系统的依赖。
-  当前题库已按难度拆分到 `js/data/puzzles-*.js`，并配有校验与摘要脚本，方便持续扩题。
-
-- **顺手的棋盘 / Smooth board interaction**  
-  已完成选格、同行列宫高亮、相同数字高亮、数字输入、擦除和撤销。
-
-- **候选数 / Notes mode**  
-  已完成手动候选数与笔记模式切换。
-
-- **小游戏主场景 / Minigame board scene**  
-  已完成 `Canvas 2D` 单场景结构与触摸命中。
-
-- **本地进度 / Local progress**  
-  已完成当前局面的本地保存与继续游戏，支持保留棋盘、焦点与笔记模式。
-
-- **分层提示 / Layered hints**  
-  已完成按难度分级的提示流程，支持提示循环、提示层级进度、高阶多格高亮，以及 `x-wing / xy-wing / box-line-reduction / naked-pair` 等差异化提示表现。
-
-- **完成反馈与本地统计 / Completion feedback and local stats**  
-  已完成完成卡片、查看统计、每难度完成数 / 平均时间 / 平均提示、本地连续天数，以及首页最近一局摘要。
-
-### 🧱 下一阶段 / Next Phase
-
-- **高阶技巧覆盖 / Advanced technique coverage**  
-  继续补更多高阶技巧的提示说明、关联高亮与题面覆盖，让 `skilled / expert` 的解题体验更完整。
-
-- **题库持续扩充 / Puzzle bank expansion**  
-  继续按难度扩题，并保持 givens 分布、技巧标签与题面摘要脚本稳定。
-
-- **首页与回访体验 / Return-loop polish**  
-  在现有首页轻提示基础上，继续收拢“最近一局 / 连续天数 / 回到游戏”的反馈节奏。
-
-### 🌿 更后续方向 / Later Ideas
-
-- 技巧训练专题 / Technique training
-- 每周挑战 / Weekly challenges
-- 题目收藏 / Puzzle bookmarks
-- 解题回放 / Solve replay
-- 更多高阶技巧提示 / Advanced solving techniques
-- 云同步 / Cloud sync
-- 好友成绩与排行榜 / Friend scores and leaderboards
-- 分享卡片 / Share cards
-
-## 🎨 设计原则 / Design Principles
-
-| 原则 | 说明 |
-|---|---|
-| 棋盘优先 | 数独体验的质量主要来自棋盘输入、候选数、提示、排错和存档。 |
-| 本地优先 | 首版不依赖登录和服务端，优先保证启动快、离线可玩、实现风险低。 |
-| 辅助可调 | 新手需要更多帮助，老手需要更少打扰。 |
-| 提示分层 | 先给方向，再给格子，再解释技巧，最后才给答案。 |
-| 视觉克制 | 保持清爽、耐看、稳定，不做过重装饰。 |
-
-## 🛠️ 项目进度 / Progress
-
-| 阶段 | 状态 | 说明 |
-|---|---|---|
-| 产品设计 / Product design | Done | 已完成当前产品基线与小游戏方向收口 |
-| 文档合并 / Documentation merge | Done | 已统一当前主设计与主计划文档 |
-| 小游戏迁移 / Minigame migration | Done | 已完成入口切换、`js/` 主线结构和单场景数独主循环 |
-| 棋盘核心 / Board core | Done | 已完成选格、填数、笔记、擦除、撤销和高亮闭环 |
-| 本地存档 / Local storage | Done | 已完成当前局面本地保存与继续游戏 |
-| 提示引擎 / Hint engine | Done | 已完成分难度提示、提示循环、层级进度与高阶多格高亮 |
-| 完成反馈与统计 / Result and stats | Done | 已完成完成卡片、统计页、连续天数与首页最近一局摘要 |
-| 高阶技巧与题库扩展 / Advanced coverage | Next | 下一步继续扩题并补更多高阶技巧表现 |
-
-## 📚 文档导航 / Documentation
-
-| 文档 | 内容 | 适合什么时候看 |
-|---|---|---|
-| [文档导航](docs/README.md) | 推荐阅读顺序、当前有效文档、历史文档说明 | 第一次接手项目时 |
-| [九屿当前设计基线](docs/2026-06-04-jiuyu-current-design.md) | 当前产品定位、平台判断、小游戏结构方向、当前范围 | 想知道“现在到底按什么做”时 |
-| [九屿当前实施计划](docs/2026-06-04-jiuyu-current-implementation-plan.md) | 当前阶段划分、当前进度、验证策略、主文档关系 | 准备继续开发或接手项目时 |
-| [小游戏迁移设计](docs/superpowers/specs/2026-06-04-jiuyu-minigame-migration-design.md) | 小游戏结构迁移的详细设计 | 需要理解迁移原因与结构取舍时 |
-| [小游戏迁移实施计划](docs/superpowers/plans/2026-06-04-minigame-migration-implementation.md) | 已完成迁移阶段的具体执行记录 | 回看迁移落地过程时 |
-| [本地存档设计](docs/superpowers/specs/2026-06-04-jiuyu-local-save-design.md) | 当前下一阶段的能力设计 | 准备进入本地存档开发时 |
-| [本地存档实施计划](docs/superpowers/plans/2026-06-04-local-save-implementation.md) | 当前下一阶段的实施拆解 | 准备按步骤实现本地存档时 |
-| [历史小程序设计](docs/2026-05-22-jiuyu-sudoku-miniapp-design.md) | 小程序阶段的产品讨论与定位来源 | 回看历史判断时 |
-| [历史小程序计划](docs/2026-05-22-jiuyu-miniapp-implementation-plan.md) | 小程序阶段的实施拆解 | 回看旧结构来源时 |
-
-## 🗂️ 项目结构 / Project Structure
+## 项目结构
 
 ```text
 jiuyu-miniapp/
-  docs/                         Current docs + historical docs
-  game.js                       Minigame entry (target)
-  game.json                     Minigame config (target)
-  js/                           Minigame runtime source (target)
-    main.js                     Bootstrapping and touch dispatch
+  game.js
+  game.json
+  js/
+    main.js
     data/
-      puzzles.js                Local puzzle bank
-    services/
-      game-engine.js            Game state and board operations
-    utils/
-      sudoku.js                 Sudoku coordinate helpers
+      puzzles-*.js
     scene/
-      board-scene.js            Board rendering and hit testing
+    services/
     ui/
-      toolbar.js                Number bar and tool controls
-  miniprogram/                  Legacy mini program reference files
-  tests/                        Logic regression tests
-  project.config.json           WeChat DevTools project config
+    utils/
+  scripts/
+  tests/
+  project.config.json
 ```
 
-## 🚀 开发方式 / Getting Started
+## 开发与运行
 
-1. 克隆仓库 / Clone the repository.
+1. 克隆仓库
 
 ```bash
 git clone https://github.com/yamathyao/jiuyu-miniapp.git
 cd jiuyu-miniapp
 ```
 
-2. 使用微信开发者工具以小游戏项目方式导入项目目录。  
-   Open the project folder with WeChat DevTools as a minigame project.
+2. 使用微信开发者工具按“微信小游戏”项目导入仓库目录。
 
-3. AppID 需使用小游戏对应的 AppID。  
-   Use the AppID created for WeChat Minigame.
+3. 配置对应小游戏 AppID 后即可在开发者工具中运行。
 
-## 🧪 题库维护 / Puzzle Bank Maintenance
+4. 建议在微信开发者工具或真机重点确认以下体验：
 
-新增或调整题库后，建议至少运行以下两个脚本：
+- 高 DPR 设备上的文字与棋盘清晰度
+- 局内计时是否持续推进并在完成卡片中正确落地
+- 完成一局后退出再进入时，首页是否直接回到“开始新局”状态
+- 右上角菜单的“分享给好友 / 分享到朋友圈”是否符合预期
+- 首页品牌卡片与右上角区域之间的留白是否符合预期
+
+## 测试
+
+运行完整逻辑回归：
+
+```bash
+node --test tests/game-engine.test.js
+```
+
+## 题库维护
+
+调整题库后，建议至少运行：
 
 ```bash
 node scripts/validate-puzzles.js
 node scripts/summarize-puzzles.js
 ```
 
-- `validate-puzzles.js`
-  检查 `id` 唯一、难度合法、`puzzle / solution` 长度与字符合法、givens 与解答一致、解答满足数独行列宫约束。
-- `summarize-puzzles.js`
-  输出各难度题量，以及 givens 的最小值、最大值和平均值，便于快速观察题库分布是否偏移。
+- `validate-puzzles.js`：校验题目合法性、解答一致性和最小结构多样性门槛
+- `summarize-puzzles.js`：输出各难度题量、givens 分布和结构簇摘要
 
-4. 当前迁移目标入口：  
-   Current target entry:
+## 当前范围
 
-```text
-game.js
-```
+当前仓库聚焦数独核心玩法与本地体验，不包含以下外围能力：
 
-## 🧱 当前边界 / Current Scope
+- 登录
+- 云同步
+- 排行榜
+- 动态挑战分享或战绩分享
+- 广告
+- 皮肤商城
 
-首版暂不做以下能力：
+## License
 
-- 登录 / Login
-- 云同步 / Cloud sync
-- 好友排行 / Friend leaderboard
-- 分享挑战 / Share challenge
-- 广告 / Ads
-- 皮肤商城 / Theme shop
-- AI 提示 / AI hints
-- 复杂闯关地图 / Complex level map
-
-这些功能并不是不重要，而是需要等核心体验稳定后再加入。九屿第一阶段应该先证明：一个本地、轻量、顺手的数独小游戏，值得用户每天打开。
-
-These features are intentionally out of scope for the first version. The first milestone should prove that a local-first, lightweight, smooth Sudoku minigame is worth opening every day.
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
-本项目使用 [MIT License](LICENSE) 开源。
+[MIT License](LICENSE)

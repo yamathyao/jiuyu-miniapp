@@ -1,17 +1,121 @@
-function buildCompletionTags(summary) {
-  const tags = [];
+function buildCompletionTagKeys(summary) {
+  const keys = [];
 
   if (summary.hintCount === 0) {
-    tags.push("零提示");
+    keys.push("zeroHints");
   }
   if (summary.mistakeCount === 0) {
-    tags.push("零错误");
+    keys.push("zeroMistakes");
   }
   if (summary.mistakeCount === 0 && summary.checkCount === 0) {
-    tags.push("一次完成");
+    keys.push("oneShot");
   }
 
-  return tags;
+  return keys;
+}
+
+function buildCompletionTags(summary, t) {
+  if (typeof t !== "function") {
+    return buildLegacyTags(buildCompletionTagKeys(summary));
+  }
+
+  const translate = typeof t === "function"
+    ? t
+    : function (key) {
+        return key;
+      };
+
+  return buildCompletionTagKeys(summary).map(function (key) {
+    return translate("completion.tags." + key);
+  });
+}
+
+function normalizeLastResultTagKeys(summary) {
+  if (Array.isArray(summary.resultTagKeys) && summary.resultTagKeys.length > 0) {
+    return summary.resultTagKeys.slice(0, 3);
+  }
+
+  return buildCompletionTagKeys(summary);
+}
+
+function getLocalizedResultTags(summary, t) {
+  const translate = typeof t === "function"
+    ? t
+    : function (key) {
+        return key;
+      };
+
+  return normalizeLastResultTagKeys(summary).map(function (key) {
+    return translate("completion.tags." + key);
+  });
+}
+
+function buildLegacyTags(resultTagKeys) {
+  const mapping = {
+    zeroHints: "零提示",
+    zeroMistakes: "零错误",
+    oneShot: "一次完成"
+  };
+
+  return resultTagKeys.map(function (key) {
+    return mapping[key] || key;
+  });
+}
+
+function mapLegacyTagToKey(tag) {
+  const mapping = {
+    "零提示": "zeroHints",
+    "零错误": "zeroMistakes",
+    "一次完成": "oneShot",
+    "No hints": "zeroHints",
+    "No mistakes": "zeroMistakes",
+    "One-shot clear": "oneShot",
+    "ヒントなし": "zeroHints",
+    "ミスなし": "zeroMistakes",
+    "一発クリア": "oneShot"
+  };
+
+  return mapping[tag] || null;
+}
+
+function normalizeStatsTagKeys(stats) {
+  if (Array.isArray(stats.lastResultTagKeys) && stats.lastResultTagKeys.length > 0) {
+    return stats.lastResultTagKeys.slice(0, 3);
+  }
+
+  if (Array.isArray(stats.lastResultTags)) {
+    return stats.lastResultTags
+      .map(mapLegacyTagToKey)
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
+  return [];
+}
+
+function buildLastResultTags(stats, t) {
+  const translate = typeof t === "function"
+    ? t
+    : function (key) {
+        return key;
+      };
+  const tagKeys = normalizeStatsTagKeys(stats);
+
+  if (tagKeys.length > 0) {
+    return tagKeys.map(function (key) {
+      return translate("completion.tags." + key);
+    });
+  }
+
+  return Array.isArray(stats.lastResultTags)
+    ? stats.lastResultTags.slice(0, 3)
+    : [];
+}
+
+function createLocalizedSummary(summary, t) {
+  return Object.assign({}, summary, {
+    resultTags: getLocalizedResultTags(summary, t)
+  });
 }
 
 function buildCompletionMessage(summary, t) {
@@ -43,7 +147,8 @@ function createCompletionSummary(input) {
   const completionMessage = buildCompletionMessage(summary, input.t);
 
   return Object.assign({}, summary, {
-    resultTags: buildCompletionTags(summary),
+    resultTagKeys: buildCompletionTagKeys(summary),
+    resultTags: buildCompletionTags(summary, input.t),
     title: completionMessage.title,
     encouragement: completionMessage.encouragement
   });
@@ -55,6 +160,8 @@ function createEmptyStats() {
     lastCompletedAt: "",
     lastCompletedDifficulty: "",
     lastElapsedSeconds: 0,
+    lastResultTags: [],
+    lastResultTagKeys: [],
     currentStreakDays: 0,
     bestStreakDays: 0,
     bestTimeByDifficulty: {
@@ -116,6 +223,8 @@ function applyCompletionToStats(stats, summary) {
   nextStats.lastCompletedAt = summary.completedAt;
   nextStats.lastCompletedDifficulty = summary.difficulty;
   nextStats.lastElapsedSeconds = summary.elapsedSeconds;
+  nextStats.lastResultTagKeys = normalizeLastResultTagKeys(summary);
+  nextStats.lastResultTags = buildLegacyTags(nextStats.lastResultTagKeys);
   nextStats.completionCountByDifficulty[difficulty] = count;
   nextStats.hintCountByDifficulty[difficulty] += summary.hintCount;
   nextStats.totalTimeByDifficulty[difficulty] = totalTime;
@@ -147,6 +256,9 @@ function applyCompletionToStats(stats, summary) {
 
 module.exports = {
   buildCompletionTags,
+  buildCompletionTagKeys,
+  buildLastResultTags,
+  createLocalizedSummary,
   buildCompletionMessage,
   createCompletionSummary,
   createEmptyStats,
