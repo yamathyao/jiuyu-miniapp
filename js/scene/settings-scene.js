@@ -20,6 +20,13 @@ function measureTextWidth(context, text) {
   return String(text || "").length * getFontSize(context && context.font) * 0.56;
 }
 
+function withAlpha(context, alpha, draw) {
+  const previous = typeof context.globalAlpha === "number" ? context.globalAlpha : 1;
+  context.globalAlpha = alpha;
+  draw();
+  context.globalAlpha = previous;
+}
+
 function drawWrappedText(context, text, left, top, maxWidth, lineHeight, maxLines) {
   const words = String(text || "").split(" ");
   const lines = [];
@@ -68,6 +75,7 @@ function createSettingsScene(options) {
   const languageSectionTop = panelTop + heroHeight + sectionGap;
   const languageCardTop = languageSectionTop + sectionTitleToCardGap;
   const languageCardHeight = 94;
+  const resumeCardHeight = 80;
   const restartCardHeight = 80;
   const difficultyCardGap = 12;
   const difficultyCardHeight = 74;
@@ -81,7 +89,9 @@ function createSettingsScene(options) {
           return key;
         };
     const isEnglish = t("common.back") === "Back";
-    const restartCardTop = languageCardTop + languageCardHeight + 20;
+    const showResumeCard = Boolean(renderState && renderState.showResumeAction);
+    const resumeCardTop = languageCardTop + languageCardHeight + 20;
+    const restartCardTop = resumeCardTop + (showResumeCard ? resumeCardHeight + 14 : 0);
     const difficultySectionTop = restartCardTop + restartCardHeight + sectionGap;
     const difficultyMetaTop = difficultySectionTop + metaGap;
     const difficultyCardsTop = difficultyMetaTop + metaGap;
@@ -100,6 +110,8 @@ function createSettingsScene(options) {
       languageCardTop: languageCardTop,
       languageCardWidth: contentWidth,
       languageCardHeight: languageCardHeight,
+      resumeCardTop: resumeCardTop,
+      resumeCardHeight: resumeCardHeight,
       restartCardTop: restartCardTop,
       restartCardHeight: restartCardHeight,
       difficultyCardLeft: contentLeft,
@@ -127,14 +139,18 @@ function createSettingsScene(options) {
     });
   }
 
-  function drawTopline(context, metrics, visualSpec, t) {
+  function drawTopline(context, metrics, visualSpec, t, renderState) {
+    const backLabel = renderState && renderState.backLabel
+      ? renderState.backLabel
+      : t("common.back");
+
     drawPlaque(
       context,
       metrics.backLeft,
       metrics.backTop,
       82,
       metrics.backHeight,
-      t("common.back"),
+      backLabel,
       {
         fill: visualSpec.cardFill,
         border: visualSpec.cardBorder,
@@ -179,27 +195,52 @@ function createSettingsScene(options) {
     const eyebrowText = options.eyebrowText;
     const align = options.align || "left";
     const accent = Boolean(options.accent);
+    const disabled = Boolean(options.disabled);
     const radius = options.radius || 20;
     const lift = accent ? 5 : 4;
     const centerX = left + width / 2;
     const textLeft = left + 18;
     const primaryY = options.primaryY || (top + (secondaryText ? 38 : height / 2));
     const secondaryY = options.secondaryY || (top + height - 24);
+    const shadowFill = disabled
+      ? "rgba(128, 128, 128, 0.10)"
+      : (accent ? "rgba(107, 79, 59, 0.22)" : "rgba(118, 95, 84, 0.16)");
+    const baseFill = disabled
+      ? "rgba(242, 239, 233, 0.92)"
+      : (accent ? visualSpec.cardAccent : visualSpec.cardFill);
+    const borderFill = disabled
+      ? "rgba(162, 158, 150, 0.72)"
+      : (accent ? visualSpec.ornament : visualSpec.cardBorder);
+    const insetFill = disabled
+      ? "rgba(255, 255, 255, 0.16)"
+      : (accent ? "rgba(255, 246, 236, 0.18)" : "rgba(255, 255, 255, 0.24)");
+    const floorFill = disabled
+      ? "rgba(160, 160, 160, 0.08)"
+      : (accent ? "rgba(122, 84, 55, 0.12)" : "rgba(136, 112, 98, 0.1)");
+    const eyebrowFill = disabled
+      ? visualSpec.accentSoftText
+      : (accent ? visualSpec.accentText : visualSpec.accentSoftText);
+    const primaryFill = disabled
+      ? visualSpec.accentSoftText
+      : (accent ? visualSpec.accentText : visualSpec.titleColor);
+    const secondaryFill = disabled
+      ? visualSpec.accentSoftText
+      : (accent ? visualSpec.accentText : visualSpec.bodyColor);
 
-    context.fillStyle = accent ? "rgba(107, 79, 59, 0.22)" : "rgba(118, 95, 84, 0.16)";
+    context.fillStyle = shadowFill;
     drawRoundedRectPath(context, left, top + lift, width, height, radius);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
-    context.fillStyle = accent ? visualSpec.cardAccent : visualSpec.cardFill;
+    context.fillStyle = baseFill;
     drawRoundedRectPath(context, left, top, width, height, radius);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
     context.lineWidth = accent ? 1.3 : 1.1;
-    context.strokeStyle = accent ? visualSpec.ornament : visualSpec.cardBorder;
+    context.strokeStyle = borderFill;
     drawRoundedRectPath(context, left, top, width, height, radius);
     if (typeof context.stroke === "function") {
       context.stroke();
@@ -212,27 +253,27 @@ function createSettingsScene(options) {
       context.stroke();
     }
 
-    context.fillStyle = accent ? "rgba(255, 246, 236, 0.18)" : "rgba(255, 255, 255, 0.24)";
+    context.fillStyle = insetFill;
     drawRoundedRectPath(context, left + 8, top + 8, width - 16, 18, 10);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
-    context.fillStyle = accent ? "rgba(122, 84, 55, 0.12)" : "rgba(136, 112, 98, 0.1)";
+    context.fillStyle = floorFill;
     drawRoundedRectPath(context, left + 10, top + height - 20, width - 20, 8, 4);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
     if (eyebrowText) {
-      context.fillStyle = accent ? visualSpec.accentText : visualSpec.accentSoftText;
+      context.fillStyle = eyebrowFill;
       context.font = "12px sans-serif";
       context.textAlign = align;
       context.textBaseline = "middle";
       context.fillText(eyebrowText, align === "center" ? centerX : textLeft, top + 22);
     }
 
-    context.fillStyle = accent ? visualSpec.accentText : visualSpec.titleColor;
+    context.fillStyle = primaryFill;
     context.font = secondaryText ? "bold 22px sans-serif" : "bold 18px sans-serif";
     context.textAlign = align;
     context.textBaseline = "middle";
@@ -242,7 +283,7 @@ function createSettingsScene(options) {
       return;
     }
 
-    context.fillStyle = accent ? visualSpec.accentText : visualSpec.bodyColor;
+    context.fillStyle = secondaryFill;
     context.font = "12px sans-serif";
     context.textAlign = align;
     context.textBaseline = "middle";
@@ -283,21 +324,27 @@ function createSettingsScene(options) {
     );
   }
 
-  function drawDifficultyCard(context, left, top, width, height, label, hint, active, visualSpec) {
-    context.fillStyle = active ? visualSpec.cardAccent : visualSpec.cardFill;
+  function drawDifficultyCard(context, left, top, width, height, label, hint, active, visualSpec, disabled) {
+    context.fillStyle = disabled
+      ? "rgba(242, 239, 233, 0.94)"
+      : (active ? visualSpec.cardAccent : visualSpec.cardFill);
     drawRoundedRectPath(context, left, top, width, height, 18);
     if (typeof context.fill === "function") {
       context.fill();
     }
 
     context.lineWidth = active ? 1.4 : 1;
-    context.strokeStyle = active ? visualSpec.ornament : visualSpec.cardBorder;
+    context.strokeStyle = disabled
+      ? "rgba(162, 158, 150, 0.72)"
+      : (active ? visualSpec.ornament : visualSpec.cardBorder);
     drawRoundedRectPath(context, left, top, width, height, 18);
     if (typeof context.stroke === "function") {
       context.stroke();
     }
 
-    context.fillStyle = active ? visualSpec.accentText : visualSpec.titleColor;
+    context.fillStyle = disabled
+      ? visualSpec.accentSoftText
+      : (active ? visualSpec.accentText : visualSpec.titleColor);
     context.font = "bold 15px sans-serif";
     context.textAlign = "left";
     context.textBaseline = "middle";
@@ -311,6 +358,8 @@ function createSettingsScene(options) {
   }
 
   function drawRestartCard(context, metrics, visualSpec, renderState, t) {
+    const examLocked = Boolean(renderState && renderState.examSettingsRestricted);
+
     drawActionButtonBlock(
       context,
       metrics.contentLeft,
@@ -319,11 +368,33 @@ function createSettingsScene(options) {
       metrics.restartCardHeight,
       visualSpec,
       {
-        primaryText: t("settings.restartLabel"),
-        secondaryText: t("settings.restartHint"),
+        primaryText: examLocked ? t("settings.exitExamLabel") : t("settings.restartLabel"),
+        secondaryText: examLocked ? t("settings.exitExamHint") : t("settings.restartHint"),
         accent: true,
         primaryY: metrics.restartCardTop + 30,
         secondaryY: metrics.restartCardTop + 58
+      }
+    );
+  }
+
+  function drawResumeCard(context, metrics, visualSpec, renderState, t) {
+    if (!renderState || !renderState.showResumeAction) {
+      return;
+    }
+
+    drawActionButtonBlock(
+      context,
+      metrics.contentLeft,
+      metrics.resumeCardTop,
+      metrics.contentWidth,
+      metrics.resumeCardHeight,
+      visualSpec,
+      {
+        primaryText: t("settings.resumeGameLabel"),
+        secondaryText: t("settings.resumeGameHint"),
+        accent: false,
+        primaryY: metrics.resumeCardTop + 30,
+        secondaryY: metrics.resumeCardTop + 58
       }
     );
   }
@@ -332,6 +403,8 @@ function createSettingsScene(options) {
     const difficulty = renderState && renderState.selectedDifficulty
       ? renderState.selectedDifficulty
       : "beginner";
+    const examLocked = Boolean(renderState && renderState.examSettingsRestricted);
+    const sectionAlpha = examLocked ? 0.64 : 1;
     const cards = [
       {
         value: "beginner",
@@ -359,38 +432,43 @@ function createSettingsScene(options) {
       }
     ];
 
-    context.fillStyle = visualSpec.helperFill;
-    context.font = "bold 15px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(
-      t("settings.difficultyLabel"),
-      metrics.difficultyCardLeft + metrics.contentWidth / 2,
-      metrics.difficultySectionTop
-    );
-
-    context.fillStyle = visualSpec.accentSoftText;
-    context.font = "13px sans-serif";
-    context.fillText(
-      t("settings.difficultyCurrent", {
-        difficulty: t("difficulty." + difficulty)
-      }),
-      metrics.difficultyCardLeft + metrics.contentWidth / 2,
-      metrics.difficultyMetaTop
-    );
-
-    cards.forEach(function (card) {
-      drawDifficultyCard(
-        context,
-        card.left,
-        card.top,
-        metrics.difficultyCardWidth,
-        metrics.difficultyCardHeight,
-        t("difficulty." + card.value),
-        card.hint,
-        difficulty === card.value,
-        visualSpec
+    withAlpha(context, sectionAlpha, function () {
+      context.fillStyle = visualSpec.helperFill;
+      context.font = "bold 15px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(
+        t("settings.difficultyLabel"),
+        metrics.difficultyCardLeft + metrics.contentWidth / 2,
+        metrics.difficultySectionTop
       );
+
+      context.fillStyle = visualSpec.accentSoftText;
+      context.font = "13px sans-serif";
+      context.fillText(
+        examLocked
+          ? t("settings.examLockedHint")
+          : t("settings.difficultyCurrent", {
+              difficulty: t("difficulty." + difficulty)
+            }),
+        metrics.difficultyCardLeft + metrics.contentWidth / 2,
+        metrics.difficultyMetaTop
+      );
+
+      cards.forEach(function (card) {
+        drawDifficultyCard(
+          context,
+          card.left,
+          card.top,
+          metrics.difficultyCardWidth,
+          metrics.difficultyCardHeight,
+          t("difficulty." + card.value),
+          card.hint,
+          difficulty === card.value,
+          visualSpec,
+          examLocked
+        );
+      });
     });
   }
 
@@ -456,9 +534,10 @@ function createSettingsScene(options) {
     const visualSpec = getVisualSpec(renderState);
 
     drawBackdrop(context, metrics, visualSpec);
-    drawTopline(context, metrics, visualSpec, t);
+    drawTopline(context, metrics, visualSpec, t, renderState);
     drawHeroPanel(context, metrics, visualSpec, t);
     drawLanguageCard(context, metrics, visualSpec, renderState, t);
+    drawResumeCard(context, metrics, visualSpec, renderState, t);
     drawRestartCard(context, metrics, visualSpec, renderState, t);
     drawDifficultyCards(context, metrics, visualSpec, renderState, t);
     drawHelperCards(context, metrics, visualSpec, renderState, t);
@@ -466,6 +545,7 @@ function createSettingsScene(options) {
 
   function hitTest(x, y, renderState) {
     const metrics = getMetrics(renderState);
+    const examLocked = Boolean(renderState && renderState.examSettingsRestricted);
 
     if (
       x >= metrics.backLeft &&
@@ -486,12 +566,25 @@ function createSettingsScene(options) {
     }
 
     if (
+      renderState &&
+      renderState.showResumeAction &&
+      x >= metrics.contentLeft &&
+      x <= metrics.contentLeft + metrics.contentWidth &&
+      y >= metrics.resumeCardTop &&
+      y <= metrics.resumeCardTop + metrics.resumeCardHeight
+    ) {
+      return { type: "action", value: "resume-game" };
+    }
+
+    if (
       x >= metrics.contentLeft &&
       x <= metrics.contentLeft + metrics.contentWidth &&
       y >= metrics.restartCardTop &&
       y <= metrics.restartCardTop + metrics.restartCardHeight
     ) {
-      return { type: "action", value: "restart-game" };
+      return examLocked
+        ? { type: "action", value: "exit-exam" }
+        : { type: "action", value: "restart-game" };
     }
 
     const difficultyActions = [
@@ -518,6 +611,9 @@ function createSettingsScene(options) {
         y >= action.top &&
         y <= action.top + metrics.difficultyCardHeight
       ) {
+        if (examLocked) {
+          return null;
+        }
         return { type: "difficulty", value: action.value };
       }
     }

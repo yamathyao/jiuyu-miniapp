@@ -1,9 +1,11 @@
 const { createEmptyStats } = require("./stats-service");
+const { createEmptyProgress } = require("./progress-service");
 
 const STORAGE_KEYS = {
   currentGame: "jiuyu.currentGame",
   settings: "jiuyu.settings",
-  stats: "jiuyu.stats"
+  stats: "jiuyu.stats",
+  progress: "jiuyu.progress"
 };
 
 function getStorageApi(storageApi) {
@@ -188,6 +190,40 @@ function saveStats(stats, storageApi) {
   return writeStorage(STORAGE_KEYS.stats, stats, storageApi);
 }
 
+function isValidProgress(progress) {
+  return Boolean(progress) &&
+    Array.isArray(progress.unlockedDifficulties) &&
+    typeof progress.totalPoints === "number" &&
+    Boolean(progress.examRecordByDifficulty);
+}
+
+function loadProgress(storageApi) {
+  const savedProgress = readStorage(STORAGE_KEYS.progress, null, storageApi);
+  const emptyProgress = createEmptyProgress();
+
+  if (!isValidProgress(savedProgress)) {
+    return emptyProgress;
+  }
+
+  return {
+    unlockedDifficulties: Array.isArray(savedProgress.unlockedDifficulties)
+      ? savedProgress.unlockedDifficulties.slice()
+      : emptyProgress.unlockedDifficulties.slice(),
+    totalPoints: typeof savedProgress.totalPoints === "number"
+      ? savedProgress.totalPoints
+      : emptyProgress.totalPoints,
+    examRecordByDifficulty: Object.assign(
+      {},
+      emptyProgress.examRecordByDifficulty,
+      savedProgress.examRecordByDifficulty || {}
+    )
+  };
+}
+
+function saveProgress(progress, storageApi) {
+  return writeStorage(STORAGE_KEYS.progress, progress, storageApi);
+}
+
 module.exports = {
   STORAGE_KEYS,
   readStorage,
@@ -197,5 +233,7 @@ module.exports = {
   loadSettings,
   saveSettings,
   loadStats,
-  saveStats
+  saveStats,
+  loadProgress,
+  saveProgress
 };

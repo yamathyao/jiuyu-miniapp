@@ -13,7 +13,9 @@ const {
   loadSettings,
   saveSettings,
   loadStats,
-  saveStats
+  saveStats,
+  loadProgress,
+  saveProgress
 } = require("./services/storage");
 const { runDifficultyCheck } = require("./services/checker");
 const { getNextHint } = require("./services/hint-engine");
@@ -22,6 +24,14 @@ const {
   applyCompletionToStats,
   buildLastResultTags
 } = require("./services/stats-service");
+const {
+  isDifficultyUnlocked,
+  applyExamPassToProgress,
+  applyExamFailureToProgress,
+  applyPointsToProgress,
+  getPointsReward,
+  getUnlockCost
+} = require("./services/progress-service");
 const {
   registerShareSupport
 } = require("./services/share-service");
@@ -95,7 +105,25 @@ function buildHomeReturnCard(stats, hasSavedGame, t) {
   };
 }
 
-const DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED = true;
+function getExamTimeLimitSeconds(difficulty) {
+  if (difficulty === "beginner") {
+    return 600;
+  }
+
+  if (difficulty === "intermediate") {
+    return 600;
+  }
+
+  if (difficulty === "skilled") {
+    return 600;
+  }
+
+  if (difficulty === "expert") {
+    return 600;
+  }
+
+  return 0;
+}
 
 function getViewportMetrics(wxApi, canvas) {
   let windowInfo = null;
@@ -155,18 +183,44 @@ function formatElapsedClock(elapsedSeconds) {
   return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
 }
 
+function hasAnyExamAttempt(progress) {
+  if (!progress || !progress.examRecordByDifficulty) {
+    return false;
+  }
+
+  return Object.keys(progress.examRecordByDifficulty).some(function (difficulty) {
+    const record = progress.examRecordByDifficulty[difficulty];
+    return Boolean(record && (record.attempted || record.passed || record.failedCount > 0));
+  });
+}
+
 function isGameCompletedState(game) {
   return Boolean(game) && Array.isArray(game.cells) && game.cells.every(function (cell) {
     return cell.value === game.solution[cell.index];
   });
 }
 
+function isExamSettingsRestricted(examState, settingsEntrySource) {
+  return Boolean(
+    examState &&
+    examState.active &&
+    settingsEntrySource === "board"
+  );
+}
+
+function hasMeaningfulSave(session) {
+  return !isGameCompletedState(session.game) && (
+    session.game.history.length > 0 ||
+    session.game.cells.some(function (cell) {
+      return !cell.given && cell.value;
+    })
+  );
+}
+
 function boot() {
   if (typeof wx === "undefined" || !wx.createCanvas) {
     return;
   }
-
-  registerShareSupport(wx);
 
   const canvas = wx.createCanvas();
   const context = canvas.getContext("2d");
@@ -203,12 +257,7 @@ function boot() {
   const settings = loadSettings();
   const defaultPuzzle = findPuzzleByDifficulty(settings.preferredDifficulty);
   const restoredSession = loadCurrentGame(createGame(defaultPuzzle));
-  const hasSavedGame = !isGameCompletedState(restoredSession.game) && (
-    restoredSession.game.history.length > 0 ||
-    restoredSession.game.cells.some(function (cell) {
-      return !cell.given && cell.value;
-    })
-  );
+  let hasSavedGame = hasMeaningfulSave(restoredSession);
   let activeScreen = "home";
   let selectedDifficulty = settings.preferredDifficulty;
   let difficultyPickerOpen = false;
@@ -216,16 +265,21 @@ function boot() {
   let language = settings.language;
   const puzzleCursorByDifficulty = {};
   let t = createTranslator(language);
+  registerShareSupport(wx, t);
   let game = restoredSession.game;
   let selectedIndex = restoredSession.selectedIndex;
   let noteMode = restoredSession.noteMode;
   let stats = loadStats();
+  let progress = loadProgress();
+  let initialExamChoiceVisible = !hasAnyExamAttempt(progress);
   let hintCount = 0;
   let checkCount = 0;
   let mistakeCount = 0;
   let completionVisible = false;
   let statsOverlayVisible = false;
   let completionSummary = null;
+  let examState = restoredSession.examState || null;
+  let lockedDifficultyDialog = null;
   let feedbackMessage = "";
   let feedbackType = "info";
   let issueIndexes = [];
@@ -290,8 +344,13 @@ function boot() {
     saveCurrentGame({
       game: game,
       selectedIndex: selectedIndex,
-      noteMode: noteMode
+      noteMode: noteMode,
+      examState: examState
     });
+  }
+
+  function persistProgressState() {
+    saveProgress(progress);
   }
 
   function persistSettingsState() {
@@ -334,11 +393,40 @@ function boot() {
     mistakeCount = 0;
   }
 
+  function clearLockedDifficultyDialog() {
+    lockedDifficultyDialog = null;
+  }
+
+  function buildLockedDifficultyDialog(difficulty, mode) {
+    const cost = getUnlockCost(difficulty);
+    const remaining = Math.max(0, cost - progress.totalPoints);
+
+    return {
+      difficulty: difficulty,
+      mode: mode || "actions",
+      title: t("home.lockedDialog.title", {
+        difficulty: t("difficulty." + difficulty)
+      }),
+      examAction: t("home.lockedDialog.examAction"),
+      pointsAction: t("home.lockedDialog.pointsAction"),
+      pointsProgress: t("home.lockedDialog.pointsProgress", {
+        points: String(progress.totalPoints),
+        cost: String(cost)
+      }),
+      pointsRemaining: t("home.lockedDialog.pointsRemaining", {
+        remaining: String(remaining)
+      }),
+      fallbackHint: t("home.lockedDialog.fallbackHint"),
+      examUnlockHint: t("home.lockedDialog.examUnlockHint")
+    };
+  }
+
   function isGameCompleted(nextGame) {
     return isGameCompletedState(nextGame);
   }
 
   function openCompletionState() {
+    const pointsAwarded = finalizeProgressRewards();
     const summary = createCompletionSummary({
       difficulty: game.difficulty,
       elapsedSeconds: game.elapsedSeconds,
@@ -349,54 +437,105 @@ function boot() {
       t: t
     });
 
-    completionSummary = summary;
+    completionSummary = Object.assign({}, summary, {
+      pointsAwarded: pointsAwarded
+    });
     stats = applyCompletionToStats(stats, summary);
     saveStats(stats);
+    examState = null;
     completionVisible = true;
     statsOverlayVisible = false;
   }
 
-  function createNearCompleteSession(difficulty) {
-    const puzzle = findPuzzleByDifficulty(difficulty, puzzleCursorByDifficulty);
-    const nextGame = createGame(puzzle);
-    let lastEditableIndex = -1;
+  function finalizeProgressRewards() {
+    const isExamRun = Boolean(examState && examState.active);
+    const failedExam = Boolean(isExamRun && examState.deadlineReached);
+    const pointsAwarded = failedExam ? 0 : getPointsReward(game.difficulty);
 
-    nextGame.cells.forEach(function (cell) {
-      if (!cell.given) {
-        lastEditableIndex = cell.index;
-      }
-    });
+    if (isExamRun && !failedExam) {
+      progress = applyExamPassToProgress(
+        progress,
+        examState.difficulty,
+        Math.max(0, examState.timeLimitSeconds - game.elapsedSeconds)
+      );
+    }
 
-    nextGame.cells.forEach(function (cell) {
-      if (!cell.given && cell.index !== lastEditableIndex) {
-        cell.value = nextGame.solution[cell.index];
-      }
-    });
+    if (pointsAwarded > 0) {
+      progress = applyPointsToProgress(progress, pointsAwarded);
+    }
 
-    nextGame.elapsedSeconds = 428;
-
-    return {
-      game: nextGame,
-      selectedIndex: lastEditableIndex,
-      noteMode: false
-    };
-  }
-
-  function loadDebugNearCompleteGame() {
-    const session = createNearCompleteSession(selectedDifficulty);
-
-    resetCompletionState();
-    clearFeedbackState();
-    applyGameSnapshot(session.game, session.selectedIndex, session.noteMode);
-    switchScreen("board");
+    persistProgressState();
+    return pointsAwarded;
   }
 
   function startNewGame() {
     const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
     resetCompletionState();
     clearFeedbackState();
+    clearLockedDifficultyDialog();
+    initialExamChoiceVisible = false;
+    examState = null;
     applyGameSnapshot(createGame(puzzle), -1, false);
+    hasSavedGame = false;
     switchScreen("board");
+  }
+
+  function startExamGame(difficulty) {
+    const puzzle = findPuzzleByDifficulty(difficulty, puzzleCursorByDifficulty);
+    selectedDifficulty = difficulty;
+    resetCompletionState();
+    clearFeedbackState();
+    clearLockedDifficultyDialog();
+    initialExamChoiceVisible = false;
+    examState = {
+      active: true,
+      difficulty: difficulty,
+      timeLimitSeconds: getExamTimeLimitSeconds(difficulty),
+      deadlineReached: false
+    };
+    applyGameSnapshot(createGame(puzzle), -1, false);
+    hasSavedGame = false;
+    switchScreen("board");
+  }
+
+  function abandonExamToHome() {
+    selectedDifficulty = "beginner";
+    examState = null;
+    languagePickerOpen = false;
+    difficultyPickerOpen = false;
+    lockedDifficultyDialog = null;
+    initialExamChoiceVisible = false;
+    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
+    game = createGame(puzzle);
+    selectedIndex = -1;
+    noteMode = false;
+    hasSavedGame = false;
+    persistSettingsState();
+    persistGameState();
+    switchScreen("home");
+  }
+
+  function openLockedDifficultyDialog(difficulty) {
+    lockedDifficultyDialog = buildLockedDifficultyDialog(difficulty, "actions");
+    difficultyPickerOpen = false;
+    initialExamChoiceVisible = false;
+    switchScreen("home");
+  }
+
+  function showLockedDifficultyPoints(difficulty) {
+    lockedDifficultyDialog = buildLockedDifficultyDialog(difficulty, "points");
+    difficultyPickerOpen = false;
+    initialExamChoiceVisible = false;
+    switchScreen("home");
+  }
+
+  function buildDifficultyStates() {
+    return {
+      beginner: { unlocked: isDifficultyUnlocked(progress, "beginner") },
+      intermediate: { unlocked: isDifficultyUnlocked(progress, "intermediate") },
+      skilled: { unlocked: isDifficultyUnlocked(progress, "skilled") },
+      expert: { unlocked: isDifficultyUnlocked(progress, "expert") }
+    };
   }
 
   function applyDifficultySelection(nextDifficulty) {
@@ -429,7 +568,16 @@ function boot() {
   }
 
   function goBackFromSettings() {
-    switchScreen(settingsEntrySource === "board" ? "board" : "home");
+    if (isExamSettingsRestricted(examState, settingsEntrySource)) {
+      difficultyPickerOpen = false;
+      languagePickerOpen = false;
+      clearLockedDifficultyDialog();
+      initialExamChoiceVisible = true;
+      switchScreen("home");
+      return;
+    }
+
+    switchScreen("home");
   }
 
   function handleHomeAction(homeAction) {
@@ -440,8 +588,15 @@ function boot() {
     if (homeAction.type === "difficulty") {
       selectedDifficulty = homeAction.value;
       difficultyPickerOpen = false;
+      clearLockedDifficultyDialog();
+      initialExamChoiceVisible = false;
       persistSettingsState();
       switchScreen("home");
+      return true;
+    }
+
+    if (homeAction.type === "locked-difficulty") {
+      openLockedDifficultyDialog(homeAction.value);
       return true;
     }
 
@@ -451,7 +606,14 @@ function boot() {
 
     if (homeAction.value === "toggle-difficulty-picker") {
       difficultyPickerOpen = !difficultyPickerOpen;
+      clearLockedDifficultyDialog();
+      initialExamChoiceVisible = false;
       switchScreen("home");
+      return true;
+    }
+
+    if (homeAction.value.indexOf("start-initial-exam:") === 0) {
+      startExamGame(homeAction.value.split(":")[1]);
       return true;
     }
 
@@ -467,13 +629,18 @@ function boot() {
       return true;
     }
 
-    if (homeAction.value === "settings") {
-      openSettings("home");
+    if (homeAction.value === "start-locked-exam" && lockedDifficultyDialog) {
+      startExamGame(lockedDifficultyDialog.difficulty);
       return true;
     }
 
-    if (homeAction.value === "debug-near-complete" && DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED) {
-      loadDebugNearCompleteGame();
+    if (homeAction.value === "view-locked-points" && lockedDifficultyDialog) {
+      showLockedDifficultyPoints(lockedDifficultyDialog.difficulty);
+      return true;
+    }
+
+    if (homeAction.value === "settings") {
+      openSettings("home");
       return true;
     }
 
@@ -496,6 +663,11 @@ function boot() {
       return true;
     }
 
+    if (settingsAction.type === "action" && settingsAction.value === "resume-game") {
+      continueGame();
+      return true;
+    }
+
     if (settingsAction.type === "language") {
       language = settingsAction.value;
       t = createTranslator(language);
@@ -507,6 +679,11 @@ function boot() {
 
     if (settingsAction.type === "action" && settingsAction.value === "restart-game") {
       startNewGame();
+      return true;
+    }
+
+    if (settingsAction.type === "action" && settingsAction.value === "exit-exam") {
+      abandonExamToHome();
       return true;
     }
 
@@ -526,6 +703,9 @@ function boot() {
       hasSavedGame: hasSavedGame,
       selectedDifficulty: selectedDifficulty,
       difficultyPickerOpen: difficultyPickerOpen,
+      initialExamChoiceVisible: initialExamChoiceVisible,
+      difficultyStates: buildDifficultyStates(),
+      lockedDifficultyDialog: lockedDifficultyDialog,
       recentSummary: buildRecentSummary(stats, t),
       homeReturnCard: buildHomeReturnCard(stats, hasSavedGame, t),
       t: t
@@ -537,6 +717,11 @@ function boot() {
     settingsScene.draw(context, {
       selectedDifficulty: selectedDifficulty,
       language: language,
+      showResumeAction: settingsEntrySource === "board",
+      examSettingsRestricted: isExamSettingsRestricted(examState, settingsEntrySource),
+      backLabel: settingsEntrySource === "board" || isExamSettingsRestricted(examState, settingsEntrySource)
+        ? t("settings.backHome")
+        : t("common.back"),
       t: t
     });
 
@@ -552,6 +737,11 @@ function boot() {
   function drawBoard() {
     const difficulty = game.difficulty;
     const theme = getThemeByDifficulty(difficulty);
+    const difficultyLabel = examState
+      ? t("board.examDifficultyLabel", {
+          difficulty: t("difficulty." + difficulty)
+        })
+      : t("difficulty." + difficulty);
     const cells = buildBoardView(game, selectedIndex, {
       issueIndexes: issueIndexes,
       hintTargetIndex: hintState.targetIndex,
@@ -566,13 +756,20 @@ function boot() {
       feedbackMessage: feedbackMessage,
       feedbackType: feedbackType,
       hintProgress: hintState.progress,
+      examState: examState ? {
+        active: true,
+        failed: Boolean(examState.deadlineReached),
+        remainingLabel: t("board.examRemaining", {
+          time: formatElapsedClock(Math.max(0, examState.timeLimitSeconds - game.elapsedSeconds))
+        })
+      } : null,
       completionSummary: completionSummary,
       completionVisible: completionVisible,
       statsOverlayVisible: statsOverlayVisible,
       statsSnapshot: stats,
       t: t,
       title: "方庭九屿",
-      difficultyLabel: t("difficulty." + difficulty),
+      difficultyLabel: difficultyLabel,
       timerLabel: t("board.timerLabel") + " " + formatElapsedClock(game.elapsedSeconds),
       settingsLabel: t("settings.title")
     });
@@ -585,6 +782,17 @@ function boot() {
     }
 
     game.elapsedSeconds += 1;
+
+    if (examState && examState.active && !examState.deadlineReached) {
+      if (game.elapsedSeconds >= examState.timeLimitSeconds) {
+        examState.deadlineReached = true;
+        progress = applyExamFailureToProgress(progress, examState.difficulty);
+        persistProgressState();
+        feedbackMessage = t("board.examFailed");
+        feedbackType = "warning";
+      }
+    }
+
     persistGameState();
     draw();
   }
@@ -622,7 +830,9 @@ function boot() {
         hasSavedGame: hasSavedGame,
         selectedDifficulty: selectedDifficulty,
         difficultyPickerOpen: difficultyPickerOpen,
-        debugShortcutEnabled: DEBUG_NEAR_COMPLETE_SHORTCUT_ENABLED
+        initialExamChoiceVisible: initialExamChoiceVisible,
+        difficultyStates: buildDifficultyStates(),
+        lockedDifficultyDialog: lockedDifficultyDialog
       }));
       return;
     }
@@ -649,7 +859,10 @@ function boot() {
         return;
       }
 
-      handleSettingsAction(settingsScene.hitTest(point.x, point.y, {}));
+      handleSettingsAction(settingsScene.hitTest(point.x, point.y, {
+        showResumeAction: settingsEntrySource === "board",
+        examSettingsRestricted: isExamSettingsRestricted(examState, settingsEntrySource)
+      }));
       return;
     }
 

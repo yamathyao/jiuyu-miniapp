@@ -152,6 +152,7 @@ function createBoardScene(options) {
     const difficultyLabel = renderState ? renderState.difficultyLabel || "" : "";
     const timerLabel = renderState ? renderState.timerLabel || "" : "";
     const settingsLabel = renderState ? renderState.settingsLabel || "" : "";
+    const examState = renderState ? renderState.examState || null : null;
 
     context.fillStyle = theme.surfaceTint || "#fff7eb";
     context.fillRect(boardLeft - 6, metrics.headerPanelTop, boardSize + 12, metrics.headerPanelHeight);
@@ -185,6 +186,25 @@ function createBoardScene(options) {
       context.textAlign = "left";
       context.textBaseline = "middle";
       context.fillText(timerLabel, boardLeft + 96, difficultyTop);
+    }
+
+    if (examState && examState.active) {
+      context.fillStyle = theme.buttonShadow || "#8f7569";
+      context.font = "13px sans-serif";
+      context.textAlign = "right";
+      context.textBaseline = "middle";
+      context.fillText(
+        examState.failed
+          ? renderState.t("board.examFailed")
+          : renderState.t("board.examActive"),
+        boardLeft + boardSize,
+        titleTop
+      );
+
+      if (examState.remainingLabel) {
+        context.textAlign = "left";
+        context.fillText(examState.remainingLabel, boardLeft + 188, difficultyTop);
+      }
     }
 
     if (settingsLabel) {
@@ -320,6 +340,18 @@ function createBoardScene(options) {
       cardLeft + cardWidth / 2,
       cardTop + 86
     );
+
+    if (summary.pointsAwarded != null) {
+      context.fillText(
+        summary.pointsAwarded > 0
+          ? t("completion.pointsAwarded", {
+            points: String(summary.pointsAwarded)
+          })
+          : t("completion.pointsBlocked"),
+        cardLeft + cardWidth / 2,
+        cardTop + 106
+      );
+    }
 
     context.strokeStyle = theme.ornament || "#d9a65a";
     context.lineWidth = 1;
@@ -523,7 +555,9 @@ function createBoardScene(options) {
       context.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
 
       if (cell.value) {
-        context.fillStyle = "#1f2933";
+        context.fillStyle = cell.given
+          ? theme.givenDigit || "#1f2933"
+          : theme.editableDigit || "#8A5F45";
         context.font = cell.given ? "bold 28px sans-serif" : "28px sans-serif";
         context.textAlign = "center";
         context.textBaseline = "middle";
@@ -532,7 +566,7 @@ function createBoardScene(options) {
       }
 
       if (cell.hasNotes) {
-        context.fillStyle = "#607078";
+        context.fillStyle = theme.noteDigit || "#607078";
         context.font = "12px sans-serif";
         context.textAlign = "center";
         context.textBaseline = "middle";
