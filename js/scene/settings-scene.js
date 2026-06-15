@@ -404,6 +404,9 @@ function createSettingsScene(options) {
       ? renderState.selectedDifficulty
       : "beginner";
     const examLocked = Boolean(renderState && renderState.examSettingsRestricted);
+    const difficultyStates = renderState && renderState.difficultyStates
+      ? renderState.difficultyStates
+      : {};
     const sectionAlpha = examLocked ? 0.64 : 1;
     const cards = [
       {
@@ -466,7 +469,7 @@ function createSettingsScene(options) {
           card.hint,
           difficulty === card.value,
           visualSpec,
-          examLocked
+          examLocked || (difficultyStates[card.value] && difficultyStates[card.value].unlocked === false)
         );
       });
     });
@@ -546,6 +549,9 @@ function createSettingsScene(options) {
   function hitTest(x, y, renderState) {
     const metrics = getMetrics(renderState);
     const examLocked = Boolean(renderState && renderState.examSettingsRestricted);
+    const difficultyStates = renderState && renderState.difficultyStates
+      ? renderState.difficultyStates
+      : {};
 
     if (
       x >= metrics.backLeft &&
@@ -611,7 +617,10 @@ function createSettingsScene(options) {
         y >= action.top &&
         y <= action.top + metrics.difficultyCardHeight
       ) {
-        if (examLocked) {
+        if (
+          examLocked ||
+          (difficultyStates[action.value] && difficultyStates[action.value].unlocked === false)
+        ) {
           return null;
         }
         return { type: "difficulty", value: action.value };

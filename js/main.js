@@ -716,6 +716,7 @@ function boot() {
     context.clearRect(0, 0, canvasWidth, canvasHeight);
     settingsScene.draw(context, {
       selectedDifficulty: selectedDifficulty,
+      difficultyStates: buildDifficultyStates(),
       language: language,
       showResumeAction: settingsEntrySource === "board",
       examSettingsRestricted: isExamSettingsRestricted(examState, settingsEntrySource),
@@ -860,6 +861,7 @@ function boot() {
       }
 
       handleSettingsAction(settingsScene.hitTest(point.x, point.y, {
+        difficultyStates: buildDifficultyStates(),
         showResumeAction: settingsEntrySource === "board",
         examSettingsRestricted: isExamSettingsRestricted(examState, settingsEntrySource)
       }));

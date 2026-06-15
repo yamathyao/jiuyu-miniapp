@@ -2457,6 +2457,40 @@ test("settings scene disables restart and difficulty actions during exam restric
   );
 });
 
+test("settings scene disables locked difficulties outside exams", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = settingsScene.getMetrics();
+  const lockedDifficultyState = {
+    selectedDifficulty: "beginner",
+    difficultyStates: {
+      beginner: { unlocked: true },
+      intermediate: { unlocked: false },
+      skilled: { unlocked: false },
+      expert: { unlocked: false }
+    }
+  };
+
+  assert.equal(
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + metrics.difficultyCardWidth + metrics.difficultyCardGap + 10,
+      metrics.difficultyCardTop + 10,
+      lockedDifficultyState
+    ),
+    null
+  );
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.difficultyCardLeft + 10,
+      metrics.difficultyCardTop + 10,
+      lockedDifficultyState
+    ),
+    { type: "difficulty", value: "beginner" }
+  );
+});
+
 test("language scene exposes compact language options", function () {
   const languageScene = createLanguageScene({
     canvasWidth: 375,
@@ -3279,7 +3313,7 @@ test("main entry boots into the home screen using the stored language", function
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -3495,7 +3529,7 @@ test("main entry advances and persists elapsed time during an active game", func
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -3648,7 +3682,7 @@ test("main entry treats a completed saved game as a finished run instead of a re
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -3716,7 +3750,7 @@ test("main entry can open settings from home and switch language inline", functi
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -3958,7 +3992,7 @@ test("main entry pauses elapsed time in settings and can resume back to the boar
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -4132,7 +4166,7 @@ test("main entry restricts settings actions during an exam and sends back to hom
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -4534,7 +4568,7 @@ test("main entry can change preferred difficulty directly inside settings", func
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
@@ -4580,6 +4614,109 @@ test("main entry can change preferred difficulty directly inside settings", func
 
     assert.equal(writes[writes.length - 1][0], STORAGE_KEYS.settings);
     assert.equal(writes[writes.length - 1][1].preferredDifficulty, "expert");
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry keeps locked difficulties disabled inside settings after a failed exam", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return {
+        onload: null,
+        onerror: null,
+        src: ""
+      };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return {
+          preferredDifficulty: "beginner",
+          language: "zh-CN"
+        };
+      }
+
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamFailureToProgress(createEmptyProgress(), "beginner");
+      }
+
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof touchHandler, "function");
+
+    const homeScene = createHomeScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const homeMetrics = homeScene.getMetrics({
+      difficultyPickerOpen: false
+    });
+    const settingsScene = createSettingsScene({
+      canvasWidth: 375,
+      canvasHeight: 812
+    });
+    const settingsMetrics = settingsScene.getMetrics();
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.contentLeft + 20,
+        clientY: homeMetrics.settingsTop + 20
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: settingsMetrics.difficultyCardLeft + settingsMetrics.difficultyCardWidth + settingsMetrics.difficultyCardGap + 20,
+        clientY: settingsMetrics.difficultyCardTop + 20
+      }]
+    });
+
+    const settingsWrites = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings;
+    });
+    assert.equal(settingsWrites.length, 0);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -4638,7 +4775,7 @@ test("main entry switches the active game when changing difficulty inside settin
       }
 
       if (key === STORAGE_KEYS.progress) {
-        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+        return applyExamPassToProgress(createEmptyProgress(), "expert", 0);
       }
 
       return "";
