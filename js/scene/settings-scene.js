@@ -122,6 +122,10 @@ function createSettingsScene(options) {
       difficultyCardHeight: difficultyCardHeight,
       difficultyCardGap: difficultyCardGap,
       difficultySecondRowTop: difficultyCardsTop + difficultyCardHeight + difficultyCardGap,
+      tutorialCardLeft: contentLeft,
+      tutorialCardTop: helperCardTop,
+      tutorialCardWidth: contentWidth,
+      tutorialCardHeight: helperCardHeight,
       helperCardTop: helperCardTop,
       helperCardHeight: helperCardHeight,
       helperCardBodyTop: helperCardBodyTop
@@ -476,7 +480,7 @@ function createSettingsScene(options) {
   }
 
   function drawHelperCards(context, metrics, visualSpec, renderState, t) {
-    const helperText = t("settings.helperFuture");
+    const helperText = t("tutorial.subtitle");
     const isEnglish = renderState && renderState.language === "en";
 
     context.fillStyle = visualSpec.cardFill;
@@ -493,24 +497,26 @@ function createSettingsScene(options) {
     }
 
     context.fillStyle = visualSpec.bodyColor;
-    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
+    context.font = "bold 15px sans-serif";
     context.textAlign = "left";
     context.textBaseline = "middle";
+    context.fillText(t("tutorial.title"), metrics.contentLeft + 14, metrics.helperCardTop + 22);
 
+    context.font = isEnglish ? "12px sans-serif" : "13px sans-serif";
     if (isEnglish) {
       drawWrappedText(
         context,
         helperText,
         metrics.contentLeft + 14,
-        metrics.helperCardBodyTop,
+        metrics.helperCardTop + 43,
         metrics.contentWidth - 28,
         15,
-        2
+        1
       );
       return;
     }
 
-    context.fillText(helperText, metrics.contentLeft + 14, metrics.helperCardBodyTop);
+    context.fillText(helperText, metrics.contentLeft + 14, metrics.helperCardTop + 43);
   }
 
   function drawBackdrop(context, metrics, visualSpec) {
@@ -591,6 +597,16 @@ function createSettingsScene(options) {
       return examLocked
         ? { type: "action", value: "exit-exam" }
         : { type: "action", value: "restart-game" };
+    }
+
+    if (
+      !examLocked &&
+      x >= metrics.tutorialCardLeft &&
+      x <= metrics.tutorialCardLeft + metrics.tutorialCardWidth &&
+      y >= metrics.tutorialCardTop &&
+      y <= metrics.tutorialCardTop + metrics.tutorialCardHeight
+    ) {
+      return { type: "action", value: "open-tutorial" };
     }
 
     const difficultyActions = [

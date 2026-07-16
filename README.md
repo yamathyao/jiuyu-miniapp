@@ -3,7 +3,7 @@
 > 一款本地优先、支持分层提示的数独微信小游戏。  
 > A local-first Sudoku WeChat Minigame with layered guidance for different skill levels.
 
-🧩 **当前状态 / Status:** 主循环、四档难度、三语言界面、计时、统计与微信原生分享已完成，当前仓库可作为成品基线继续维护。  
+🧩 **当前状态 / Status:** 主循环、四档难度、零基础教学、三语言界面、计时、统计、题目历史与微信原生分享已完成，当前仓库可作为成品基线继续维护。
 📱 **平台 / Platform:** 微信小游戏 / WeChat Minigame  
 🌿 **策略 / Strategy:** 本地优先 / Local-first
 
@@ -34,6 +34,9 @@ The current build already covers the full gameplay loop, including home screen, 
 - **四档难度 / Four difficulty levels**  
   `beginner / intermediate / skilled / expert`
 
+- **零基础教学 / Zero-basics tutorial**
+  独立于四档正式难度，提供三课顺序解锁的引导练习；每一步锁定当前格，填错不落盘并解释，完成后可重练或进入新手局。教学不计积分、统计、连胜或考试记录。
+
 - **三语言界面 / Three UI languages**  
   `简体中文 / English / 日本語`
 
@@ -44,7 +47,10 @@ The current build already covers the full gameplay loop, including home screen, 
   单局秒表持续推进，完成后定格在结算时间，不会继续走动。
 
 - **本地存档 / Local save**  
-  自动保存当前局面；未完成棋局支持继续游戏，已完成棋局返回首页后按新局处理。
+  自动保存当前局面与教学步骤；未完成棋局支持继续游戏，已完成棋局返回首页后按新局处理。小游戏从后台切回前台时会重绘当前画面，避免真机恢复后的黑屏。
+
+- **本地题目历史 / Local puzzle history**
+  普通局优先选择该难度未完成题，已完成题排到后面；考试从未完成题中随机抽取。超时考试不算完成，但下一次同难度考试会避开刚刚超时的题目一次，即使重启小程序后也生效。
 
 - **完成反馈 / Completion feedback**  
   已完成完成卡片、结果标签与回流入口。
@@ -78,7 +84,7 @@ The current build already covers the full gameplay loop, including home screen, 
   首页品牌卡片、主按钮、设置区与局内顶部区域已经按真机观感完成留白和位置调整。
 
 - **结构化题库 / Structured puzzle bank**  
-  带校验与摘要脚本，约束题库结构多样性。
+  带校验与摘要脚本，校验唯一解、解答一致性、教学步骤元数据与题库结构多样性。
 
 ## 🎨 设计原则 / Design Principles
 
@@ -102,6 +108,8 @@ jiuyu-miniapp/
       puzzles-*.js
     scene/
     services/
+      puzzle-selection-service.js
+      tutorial-service.js
     ui/
     utils/
   scripts/
@@ -131,6 +139,9 @@ cd jiuyu-miniapp
 - 高 DPR 设备上的文字与棋盘是否足够清晰
 - 局内计时是否持续推进，并在完成卡片中正确落地
 - 完成一局后退出再进入时，首页是否回到“开始新局”状态
+- 零基础教学是否按三课顺序解锁，且填写只作用于当前高亮格
+- 完成题在重启后是否被普通局后置；超时考试后下一场同难度考试是否避开该题
+- 真机从后台恢复时，当前画面是否正常重绘
 - 右上角菜单中的“分享给好友 / 分享到朋友圈”是否符合预期
 - 首页品牌卡片与右上角区域、局内提示区与计数标记之间的留白是否自然
 
@@ -149,8 +160,8 @@ node scripts/validate-puzzles.js
 node scripts/summarize-puzzles.js
 ```
 
-- `validate-puzzles.js`：校验题目合法性、解答一致性和最小结构多样性门槛
-- `summarize-puzzles.js`：输出各难度题量、givens 分布和结构簇摘要
+- `validate-puzzles.js`：校验题目合法性、唯一解、解答一致性、教学步骤与最小结构多样性门槛
+- `summarize-puzzles.js`：输出零基础教学及各正式难度的题量、givens 分布和结构簇摘要
 
 ## 🧭 当前范围 / Current Scope
 

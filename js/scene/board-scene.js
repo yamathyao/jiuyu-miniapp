@@ -21,29 +21,40 @@ function measureTextWidth(context, text) {
 }
 
 function getWrappedLines(context, text, maxWidth, maxLines) {
-  const source = String(text || "");
-  const units = source.indexOf(" ") >= 0 ? source.split(" ") : source.split("");
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
   const lines = [];
   let currentLine = "";
 
-  for (let index = 0; index < units.length; index += 1) {
-    const unit = units[index];
-    const nextLine = currentLine
-      ? (source.indexOf(" ") >= 0 ? currentLine + " " + unit : currentLine + unit)
-      : unit;
+  words.forEach(function (word) {
+    const nextLine = currentLine ? currentLine + " " + word : word;
 
-    if (measureTextWidth(context, nextLine) <= maxWidth || !currentLine) {
+    if (measureTextWidth(context, nextLine) <= maxWidth) {
       currentLine = nextLine;
-      continue;
+      return;
     }
 
-    lines.push(currentLine);
-    currentLine = unit;
-
-    if (maxLines && lines.length === maxLines - 1) {
-      break;
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = "";
     }
-  }
+
+    if (measureTextWidth(context, word) <= maxWidth) {
+      currentLine = word;
+      return;
+    }
+
+    word.split("").forEach(function (character) {
+      const nextWordPart = currentLine + character;
+
+      if (measureTextWidth(context, nextWordPart) <= maxWidth || !currentLine) {
+        currentLine = nextWordPart;
+        return;
+      }
+
+      lines.push(currentLine);
+      currentLine = character;
+    });
+  });
 
   if (currentLine) {
     lines.push(currentLine);
@@ -83,8 +94,15 @@ function createBoardScene(options) {
   const canvasWidth = options.canvasWidth || 375;
   const canvasHeight = options.canvasHeight || 812;
   const verticalOffset = options.verticalOffset != null ? options.verticalOffset : 32;
+  const headerPanelTop = 50 + verticalOffset;
+  const headerPanelHeight = 100;
+  const maxFeedbackHeight = 65;
+  const feedbackGap = 20;
   const horizontalPadding = options.horizontalPadding || Math.max(16, Math.floor(canvasWidth * 0.04));
-  const topPadding = options.topPadding || (Math.max(186, Math.floor(canvasHeight * 0.225)) + verticalOffset);
+  const topPadding = options.topPadding || Math.max(
+    Math.max(186, Math.floor(canvasHeight * 0.225)) + verticalOffset,
+    headerPanelTop + headerPanelHeight + maxFeedbackHeight + feedbackGap + 4
+  );
   const maxBoardSize = Math.min(
     canvasWidth - horizontalPadding * 2,
     canvasHeight * 0.62
@@ -95,8 +113,6 @@ function createBoardScene(options) {
     : Math.floor((canvasWidth - boardSize) / 2);
   const boardTop = options.boardTop != null ? options.boardTop : topPadding;
   const cellSize = boardSize / 9;
-  const headerPanelTop = 50 + verticalOffset;
-  const headerPanelHeight = 100;
   const titleTop = 94 + verticalOffset;
   const difficultyTop = 120 + verticalOffset;
   const settingsTop = 74 + verticalOffset;
@@ -127,6 +143,14 @@ function createBoardScene(options) {
   }
 
   function getCompletionActions(summary) {
+    if (summary && summary.tutorialLesson) {
+      return ["continue-tutorial"];
+    }
+
+    if (summary && summary.tutorial) {
+      return ["start-beginner", "replay-tutorial", "home"];
+    }
+
     return isAdvancedDifficulty(summary.difficulty)
       ? ["new-game", "home", "stats"]
       : ["new-game", "home"];
@@ -238,7 +262,9 @@ function createBoardScene(options) {
     const text = feedbackType === "warning"
       ? "#7a3030"
       : theme.feedbackText || "#304252";
+    const feedbackFont = "15px sans-serif";
     const lineHeight = 17;
+    context.font = feedbackFont;
     const progressLabel = hintProgress && hintProgress.current && hintProgress.total
       ? String(hintProgress.current) + "/" + String(hintProgress.total)
       : "";
@@ -257,7 +283,7 @@ function createBoardScene(options) {
     }
 
     context.fillStyle = text;
-    context.font = "15px sans-serif";
+    context.font = feedbackFont;
     context.textAlign = "left";
     context.textBaseline = "top";
     drawWrappedText(context, feedbackMessage, boardLeft + 12, feedbackTop + 8, maxWidth, lineHeight, 3);
@@ -285,6 +311,7 @@ function createBoardScene(options) {
 
     const summary = renderState.completionSummary;
     const t = renderState.t;
+    const isTutorialLesson = Boolean(summary.tutorialLesson);
     const isAdvanced = isAdvancedDifficulty(summary.difficulty);
     const actions = getCompletionActions(summary);
     const title = summary.title || (isAdvanced ? t("completion.titleByDifficulty.expert") : t("completion.titleByDifficulty.beginner"));
@@ -301,7 +328,7 @@ function createBoardScene(options) {
     const infoLeft = cardLeft + 24;
     const dividerLeft = cardLeft + 20;
     const dividerWidth = cardWidth - 40;
-    const tags = summary.resultTags.slice(0, 3);
+    const tags = (summary.resultTags || []).slice(0, 3);
     const tagWidth = Math.min(88, Math.floor((cardWidth - 48 - Math.max(0, tags.length - 1) * 10) / Math.max(tags.length, 1)));
     const tagGap = 10;
     const tagRowWidth = tags.length > 0
@@ -330,6 +357,41 @@ function createBoardScene(options) {
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(title, cardLeft + cardWidth / 2, cardTop + 46);
+
+    if (isTutorialLesson) {
+      context.fillStyle = theme.toolText || "#1f2933";
+      context.font = "16px sans-serif";
+      drawWrappedText(
+        context,
+        summary.achievement || "",
+        cardLeft + cardWidth / 2,
+        cardTop + 126,
+        cardWidth - 48,
+        24,
+        3
+      );
+      context.fillStyle = theme.buttonShadow || "#8f7569";
+      context.font = "15px sans-serif";
+      drawWrappedText(
+        context,
+        encouragement,
+        cardLeft + cardWidth / 2,
+        cardTop + 208,
+        cardWidth - 48,
+        22,
+        2
+      );
+      drawOverlayButton(
+        context,
+        cardLeft + horizontalInset,
+        buttonTop,
+        buttonWidth,
+        buttonHeight,
+        t("tutorial.lessonComplete.ok"),
+        theme
+      );
+      return;
+    }
 
     context.fillStyle = theme.buttonShadow || "#8f7569";
     context.font = "14px sans-serif";
@@ -409,9 +471,15 @@ function createBoardScene(options) {
         buttonHeight,
         action === "new-game"
           ? t("completion.nextAction")
-          : action === "home"
-            ? t("completion.homeAction")
-            : t("completion.statsAction"),
+          : action === "continue-tutorial"
+            ? t("tutorial.lessonComplete.ok")
+          : action === "start-beginner"
+            ? t("tutorial.graduation.startBeginner")
+            : action === "replay-tutorial"
+              ? t("tutorial.graduation.replay")
+              : action === "home"
+                ? t("completion.homeAction")
+                : t("completion.statsAction"),
         theme
       );
     });

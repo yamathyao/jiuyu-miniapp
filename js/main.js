@@ -1,4 +1,5 @@
 const { puzzles } = require("./data/puzzles");
+const { foundationLessons } = require("./data/puzzles-foundation");
 const {
   createGame,
   applyInputValue,
@@ -15,8 +16,23 @@ const {
   loadStats,
   saveStats,
   loadProgress,
-  saveProgress
+  saveProgress,
+  loadTutorialProgress,
+  saveTutorialProgress,
+  loadPuzzleSelectionHistory,
+  savePuzzleSelectionHistory
 } = require("./services/storage");
+const {
+  isLessonUnlocked,
+  completeTutorialLesson,
+  validateTutorialInput
+} = require("./services/tutorial-service");
+const {
+  selectNormalPuzzle,
+  selectExamPuzzle,
+  recordPuzzleCompletion,
+  recordTimedOutExam
+} = require("./services/puzzle-selection-service");
 const { runDifficultyCheck } = require("./services/checker");
 const { getNextHint } = require("./services/hint-engine");
 const {
@@ -41,6 +57,7 @@ const { createHomeScene } = require("./scene/home-scene");
 const { createBoardScene } = require("./scene/board-scene");
 const { createSettingsScene } = require("./scene/settings-scene");
 const { createLanguageScene } = require("./scene/language-scene");
+const { createTutorialScene } = require("./scene/tutorial-scene");
 const { createToolbar } = require("./ui/toolbar");
 const { getTouchPoint } = require("./utils/touch");
 
@@ -257,7 +274,7 @@ function boot() {
   const settings = loadSettings();
   const defaultPuzzle = findPuzzleByDifficulty(settings.preferredDifficulty);
   const restoredSession = loadCurrentGame(createGame(defaultPuzzle));
-  let hasSavedGame = hasMeaningfulSave(restoredSession);
+  let hasSavedGame = hasMeaningfulSave(restoredSession) || Boolean(restoredSession.tutorialState);
   let activeScreen = "home";
   let selectedDifficulty = settings.preferredDifficulty;
   let difficultyPickerOpen = false;
@@ -271,7 +288,12 @@ function boot() {
   let noteMode = restoredSession.noteMode;
   let stats = loadStats();
   let progress = loadProgress();
-  let initialExamChoiceVisible = !hasAnyExamAttempt(progress);
+  let tutorialProgress = loadTutorialProgress();
+  let puzzleSelectionHistory = loadPuzzleSelectionHistory(puzzles);
+  let initialExamChoiceVisible = !hasAnyExamAttempt(progress) &&
+    stats.totalCompleted === 0 &&
+    tutorialProgress.completedLessonIds.length === 0 &&
+    !restoredSession.tutorialState;
   let hintCount = 0;
   let checkCount = 0;
   let mistakeCount = 0;
@@ -279,6 +301,7 @@ function boot() {
   let statsOverlayVisible = false;
   let completionSummary = null;
   let examState = restoredSession.examState || null;
+  let tutorialState = restoredSession.tutorialState || null;
   let lockedDifficultyDialog = null;
   let feedbackMessage = "";
   let feedbackType = "info";
@@ -302,6 +325,10 @@ function boot() {
     canvasHeight: canvasHeight
   });
   const languageScene = createLanguageScene({
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight
+  });
+  const tutorialScene = createTutorialScene({
     canvasWidth: canvasWidth,
     canvasHeight: canvasHeight
   });
@@ -345,12 +372,21 @@ function boot() {
       game: game,
       selectedIndex: selectedIndex,
       noteMode: noteMode,
-      examState: examState
+      examState: examState,
+      tutorialState: tutorialState
     });
   }
 
   function persistProgressState() {
     saveProgress(progress);
+  }
+
+  function persistTutorialProgress() {
+    saveTutorialProgress(tutorialProgress);
+  }
+
+  function persistPuzzleSelectionHistory() {
+    savePuzzleSelectionHistory(puzzleSelectionHistory, puzzles);
   }
 
   function persistSettingsState() {
@@ -426,6 +462,7 @@ function boot() {
   }
 
   function openCompletionState() {
+    const passedExam = Boolean(examState && examState.active && !examState.deadlineReached);
     const pointsAwarded = finalizeProgressRewards();
     const summary = createCompletionSummary({
       difficulty: game.difficulty,
@@ -442,6 +479,14 @@ function boot() {
     });
     stats = applyCompletionToStats(stats, summary);
     saveStats(stats);
+    if (!examState || passedExam) {
+      puzzleSelectionHistory = recordPuzzleCompletion(
+        puzzleSelectionHistory,
+        game.puzzleId,
+        puzzles
+      );
+      persistPuzzleSelectionHistory();
+    }
     examState = null;
     completionVisible = true;
     statsOverlayVisible = false;
@@ -468,20 +513,150 @@ function boot() {
     return pointsAwarded;
   }
 
+  function getTutorialLesson(lessonId) {
+    return foundationLessons.find(function (lesson) {
+      return lesson.id === lessonId;
+    }) || null;
+  }
+
+  function getCurrentTutorialStep() {
+    const lesson = tutorialState && getTutorialLesson(tutorialState.lessonId);
+
+    return lesson && lesson.tutorialSteps[tutorialState.stepIndex]
+      ? lesson.tutorialSteps[tutorialState.stepIndex]
+      : null;
+  }
+
+  function isTutorialGame() {
+    return Boolean(tutorialState && game.difficulty === "foundation");
+  }
+
+  function openTutorial() {
+    difficultyPickerOpen = false;
+    initialExamChoiceVisible = false;
+    switchScreen("tutorial");
+  }
+
+  function startTutorialLesson(lessonId) {
+    const lesson = getTutorialLesson(lessonId);
+
+    if (!lesson || !isLessonUnlocked(tutorialProgress, lessonId)) {
+      return;
+    }
+
+    const firstStep = lesson.tutorialSteps[0];
+    resetCompletionState();
+    clearFeedbackState();
+    examState = null;
+    tutorialState = { lessonId: lessonId, stepIndex: 0 };
+    feedbackMessage = t(firstStep.explanationKey);
+    feedbackType = "info";
+    hintState = {
+      currentLevel: null,
+      targetIndex: firstStep.targetIndex,
+      relatedIndexes: firstStep.relatedIndexes,
+      progress: null
+    };
+    applyGameSnapshot(createGame(lesson), firstStep.targetIndex, false);
+    hasSavedGame = true;
+    switchScreen("board");
+  }
+
+  function handleTutorialInput(value) {
+    const lesson = getTutorialLesson(tutorialState.lessonId);
+    const step = getCurrentTutorialStep();
+    const result = validateTutorialInput(lesson, game, tutorialState.stepIndex, selectedIndex, value);
+
+    if (result.status === "blocked") {
+      feedbackMessage = t("tutorial.blocked");
+      feedbackType = "warning";
+      switchScreen("board");
+      return;
+    }
+
+    if (result.status === "incorrect") {
+      feedbackMessage = t("tutorial.incorrect");
+      feedbackType = "warning";
+      switchScreen("board");
+      return;
+    }
+
+    const nextGame = applyInputValue(game, step.targetIndex, value);
+    if (result.status === "complete") {
+      tutorialProgress = completeTutorialLesson(tutorialProgress, lesson.id);
+      persistTutorialProgress();
+      tutorialState = null;
+      applyGameSnapshot(nextGame, -1, false);
+      hasSavedGame = false;
+      if (lesson.id === foundationLessons[foundationLessons.length - 1].id) {
+        completionSummary = {
+          difficulty: "foundation",
+          elapsedSeconds: nextGame.elapsedSeconds,
+          hintCount: 0,
+          checkCount: 0,
+          mistakeCount: 0,
+          resultTags: [],
+          pointsAwarded: 0,
+          tutorial: true,
+          title: t("tutorial.graduation.title"),
+          encouragement: t("tutorial.graduation.encouragement")
+        };
+        completionVisible = true;
+        switchScreen("board");
+        return;
+      }
+
+      completionSummary = {
+        difficulty: "foundation",
+        elapsedSeconds: nextGame.elapsedSeconds,
+        hintCount: 0,
+        checkCount: 0,
+        mistakeCount: 0,
+        resultTags: [],
+        tutorialLesson: true,
+        title: t("tutorial.lessonComplete." + lesson.id + ".title"),
+        achievement: t("tutorial.lessonComplete." + lesson.id + ".achievement"),
+        encouragement: t("tutorial.lessonComplete." + lesson.id + ".advice")
+      };
+      completionVisible = true;
+      switchScreen("board");
+      return;
+    }
+
+    tutorialState = { lessonId: lesson.id, stepIndex: result.nextStepIndex };
+    const nextStep = getCurrentTutorialStep();
+    feedbackMessage = t(nextStep.explanationKey);
+    feedbackType = "info";
+    hintState = {
+      currentLevel: null,
+      targetIndex: nextStep.targetIndex,
+      relatedIndexes: nextStep.relatedIndexes,
+      progress: null
+    };
+    applyGameSnapshot(nextGame, nextStep.targetIndex, false);
+    switchScreen("board");
+  }
+
   function startNewGame() {
-    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
+    const puzzle = selectNormalPuzzle(
+      puzzles,
+      selectedDifficulty,
+      puzzleSelectionHistory,
+      puzzleCursorByDifficulty
+    );
     resetCompletionState();
     clearFeedbackState();
     clearLockedDifficultyDialog();
     initialExamChoiceVisible = false;
     examState = null;
+    tutorialState = null;
     applyGameSnapshot(createGame(puzzle), -1, false);
     hasSavedGame = false;
     switchScreen("board");
   }
 
   function startExamGame(difficulty) {
-    const puzzle = findPuzzleByDifficulty(difficulty, puzzleCursorByDifficulty);
+    const puzzle = selectExamPuzzle(puzzles, difficulty, puzzleSelectionHistory);
     selectedDifficulty = difficulty;
     resetCompletionState();
     clearFeedbackState();
@@ -505,7 +680,12 @@ function boot() {
     difficultyPickerOpen = false;
     lockedDifficultyDialog = null;
     initialExamChoiceVisible = false;
-    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
+    const puzzle = selectNormalPuzzle(
+      puzzles,
+      selectedDifficulty,
+      puzzleSelectionHistory,
+      puzzleCursorByDifficulty
+    );
     game = createGame(puzzle);
     selectedIndex = -1;
     noteMode = false;
@@ -531,6 +711,7 @@ function boot() {
 
   function buildDifficultyStates() {
     return {
+      foundation: { unlocked: true },
       beginner: { unlocked: isDifficultyUnlocked(progress, "beginner") },
       intermediate: { unlocked: isDifficultyUnlocked(progress, "intermediate") },
       skilled: { unlocked: isDifficultyUnlocked(progress, "skilled") },
@@ -539,12 +720,22 @@ function boot() {
   }
 
   function applyDifficultySelection(nextDifficulty) {
+    if (nextDifficulty === "foundation") {
+      openTutorial();
+      return false;
+    }
+
     if (selectedDifficulty === nextDifficulty) {
       return false;
     }
 
     selectedDifficulty = nextDifficulty;
-    const puzzle = findPuzzleByDifficulty(selectedDifficulty, puzzleCursorByDifficulty);
+    const puzzle = selectNormalPuzzle(
+      puzzles,
+      selectedDifficulty,
+      puzzleSelectionHistory,
+      puzzleCursorByDifficulty
+    );
     clearFeedbackState();
     feedbackMessage = t("settings.difficultyChanged", {
       difficulty: t("difficulty." + selectedDifficulty)
@@ -557,6 +748,16 @@ function boot() {
 
   function continueGame() {
     clearFeedbackState();
+    if (isTutorialGame()) {
+      const step = getCurrentTutorialStep();
+      if (step) {
+        selectedIndex = step.targetIndex;
+        noteMode = false;
+        feedbackMessage = t(step.explanationKey);
+        hintState.targetIndex = step.targetIndex;
+        hintState.relatedIndexes = step.relatedIndexes;
+      }
+    }
     switchScreen("board");
   }
 
@@ -569,11 +770,7 @@ function boot() {
 
   function goBackFromSettings() {
     if (isExamSettingsRestricted(examState, settingsEntrySource)) {
-      difficultyPickerOpen = false;
-      languagePickerOpen = false;
-      clearLockedDifficultyDialog();
-      initialExamChoiceVisible = true;
-      switchScreen("home");
+      abandonExamToHome();
       return;
     }
 
@@ -586,6 +783,10 @@ function boot() {
     }
 
     if (homeAction.type === "difficulty") {
+      if (homeAction.value === "foundation") {
+        openTutorial();
+        return true;
+      }
       selectedDifficulty = homeAction.value;
       difficultyPickerOpen = false;
       clearLockedDifficultyDialog();
@@ -668,6 +869,11 @@ function boot() {
       return true;
     }
 
+    if (settingsAction.type === "action" && settingsAction.value === "open-tutorial") {
+      openTutorial();
+      return true;
+    }
+
     if (settingsAction.type === "language") {
       language = settingsAction.value;
       t = createTranslator(language);
@@ -678,6 +884,10 @@ function boot() {
     }
 
     if (settingsAction.type === "action" && settingsAction.value === "restart-game") {
+      if (isTutorialGame()) {
+        startTutorialLesson(tutorialState.lessonId);
+        return true;
+      }
       startNewGame();
       return true;
     }
@@ -688,6 +898,10 @@ function boot() {
     }
 
     if (settingsAction.type === "difficulty") {
+      if (settingsAction.value === "foundation") {
+        openTutorial();
+        return true;
+      }
       applyDifficultySelection(settingsAction.value);
       languagePickerOpen = false;
       switchScreen("settings");
@@ -701,6 +915,7 @@ function boot() {
     context.clearRect(0, 0, canvasWidth, canvasHeight);
     homeScene.draw(context, {
       hasSavedGame: hasSavedGame,
+      savedGameDifficulty: hasSavedGame && game ? game.difficulty : null,
       selectedDifficulty: selectedDifficulty,
       difficultyPickerOpen: difficultyPickerOpen,
       initialExamChoiceVisible: initialExamChoiceVisible,
@@ -733,6 +948,22 @@ function boot() {
         t: t
       });
     }
+  }
+
+  function drawTutorial() {
+    const lessonStates = foundationLessons.reduce(function (states, lesson) {
+      states[lesson.id] = {
+        locked: !isLessonUnlocked(tutorialProgress, lesson.id),
+        completed: tutorialProgress.completedLessonIds.indexOf(lesson.id) >= 0
+      };
+      return states;
+    }, {});
+
+    tutorialScene.draw(context, {
+      lessons: foundationLessons,
+      lessonStates: lessonStates,
+      t: t
+    });
   }
 
   function drawBoard() {
@@ -774,7 +1005,9 @@ function boot() {
       timerLabel: t("board.timerLabel") + " " + formatElapsedClock(game.elapsedSeconds),
       settingsLabel: t("settings.title")
     });
-    toolbar.draw(context, noteMode, Object.assign({}, theme, { t: t }));
+    toolbar.draw(context, noteMode, Object.assign({}, theme, { t: t }), {
+      hideTools: isTutorialGame()
+    });
   }
 
   function advanceElapsedTime() {
@@ -789,6 +1022,12 @@ function boot() {
         examState.deadlineReached = true;
         progress = applyExamFailureToProgress(progress, examState.difficulty);
         persistProgressState();
+        puzzleSelectionHistory = recordTimedOutExam(
+          puzzleSelectionHistory,
+          game.puzzleId,
+          puzzles
+        );
+        persistPuzzleSelectionHistory();
         feedbackMessage = t("board.examFailed");
         feedbackType = "warning";
       }
@@ -816,11 +1055,17 @@ function boot() {
       return;
     }
 
+    if (activeScreen === "tutorial") {
+      drawTutorial();
+      return;
+    }
+
     drawBoard();
   }
 
   if (typeof wx.onShow === "function") {
     wx.onShow(function () {
+      configureCanvas(canvas, context, viewport);
       draw();
     });
   }
@@ -841,6 +1086,26 @@ function boot() {
         difficultyStates: buildDifficultyStates(),
         lockedDifficultyDialog: lockedDifficultyDialog
       }));
+      return;
+    }
+
+    if (activeScreen === "tutorial") {
+      const tutorialAction = tutorialScene.hitTest(point.x, point.y, {
+        lessons: foundationLessons,
+        lessonStates: foundationLessons.reduce(function (states, lesson) {
+          states[lesson.id] = {
+            locked: !isLessonUnlocked(tutorialProgress, lesson.id),
+            completed: tutorialProgress.completedLessonIds.indexOf(lesson.id) >= 0
+          };
+          return states;
+        }, {})
+      });
+
+      if (tutorialAction && tutorialAction.type === "lesson") {
+        startTutorialLesson(tutorialAction.value);
+      } else if (tutorialAction && tutorialAction.value === "home") {
+        switchScreen("home");
+      }
       return;
     }
 
@@ -901,6 +1166,25 @@ function boot() {
         return;
       }
 
+      if (completionAction.value === "continue-tutorial") {
+        resetCompletionState();
+        openTutorial();
+        return;
+      }
+
+      if (completionAction.value === "start-beginner") {
+        selectedDifficulty = "beginner";
+        resetCompletionState();
+        startNewGame();
+        return;
+      }
+
+      if (completionAction.value === "replay-tutorial") {
+        resetCompletionState();
+        openTutorial();
+        return;
+      }
+
       if (completionAction.value === "home") {
         resetCompletionState();
         switchScreen("home");
@@ -925,6 +1209,9 @@ function boot() {
     const hitCellIndex = boardScene.getCellIndexByPoint(point.x, point.y);
 
     if (hitCellIndex >= 0) {
+      if (isTutorialGame()) {
+        return;
+      }
       issueIndexes = [];
       hintState.targetIndex = -1;
       hintState.relatedIndexes = [];
@@ -934,13 +1221,19 @@ function boot() {
       return;
     }
 
-    const toolbarAction = toolbar.hitTest(point.x, point.y);
+    const toolbarAction = toolbar.hitTest(point.x, point.y, {
+      hideTools: isTutorialGame()
+    });
 
     if (!toolbarAction) {
       return;
     }
 
     if (toolbarAction.type === "number" && selectedIndex >= 0) {
+      if (isTutorialGame()) {
+        handleTutorialInput(toolbarAction.value);
+        return;
+      }
       const nextGame = noteMode
         ? toggleCellNote(game, selectedIndex, toolbarAction.value)
         : applyInputValue(game, selectedIndex, toolbarAction.value);
@@ -958,6 +1251,12 @@ function boot() {
     }
 
     if (toolbarAction.type === "tool") {
+      if (isTutorialGame()) {
+        feedbackMessage = t("tutorial.blocked");
+        feedbackType = "info";
+        switchScreen("board");
+        return;
+      }
       if (toolbarAction.value === "note") {
         applyGameSnapshot(game, selectedIndex, !noteMode);
       }

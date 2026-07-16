@@ -173,7 +173,7 @@ function createToolbar(options) {
     context.fillText(label, keyLeft + keyWidth / 2, keyTop + (keyHeight - 4) / 2);
   }
 
-  function draw(context, noteMode, theme) {
+  function draw(context, noteMode, theme, options) {
     const palette = getPalette(theme);
     const numberWidth = width / 9;
     const visualGap = 6;
@@ -188,6 +188,10 @@ function createToolbar(options) {
         String(index + 1),
         palette
       );
+    }
+
+    if (options && options.hideTools) {
+      return;
     }
 
     const tools = getTools(theme && theme.t);
@@ -207,7 +211,7 @@ function createToolbar(options) {
     });
   }
 
-  function hitTest(x, y) {
+  function hitTest(x, y, options) {
     const numberWidth = width / 9;
 
     if (y >= top && y <= top + numberHeight && x >= left && x <= left + width) {
@@ -217,7 +221,10 @@ function createToolbar(options) {
       };
     }
 
-    if (y >= toolTop && y <= toolTop + toolHeight && x >= left && x <= left + width) {
+    if (
+      !(options && options.hideTools) &&
+      y >= toolTop && y <= toolTop + toolHeight && x >= left && x <= left + width
+    ) {
       const toolWidth = width / toolKeys.length;
       const index = Math.floor((x - left) / toolWidth);
       return {

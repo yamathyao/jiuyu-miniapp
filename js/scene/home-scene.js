@@ -3,7 +3,8 @@ const {
   isProDifficulty
 } = require("../ui/scene-visual-spec.js");
 
-const DIFFICULTIES = ["beginner", "intermediate", "skilled", "expert"];
+const DIFFICULTIES = ["foundation", "beginner", "intermediate", "skilled", "expert"];
+const EXAM_DIFFICULTIES = ["beginner", "intermediate", "skilled", "expert"];
 
 function isEnglishTranslator(t) {
   return typeof t === "function" && t("common.back") === "Back";
@@ -138,10 +139,17 @@ function drawStackedButton(context, left, top, width, height, label, palette, st
   fillRoundedRect(context, left + 8, top + 8, width - 16, height - 18, style.innerRadius, palette.innerFill, 0.9);
   fillRoundedRect(context, left + 12, top + 7, width - 24, 12, 8, palette.highlightFill, 0.4);
   drawEdgeOrnaments(context, left + 16, width - 32, top + height / 2, palette.ornamentFill);
-  drawCenterLabel(context, label, left + width / 2, top + height / 2 + 1, {
+  const hasSubtitle = Boolean(style.subtitle);
+  drawCenterLabel(context, label, left + width / 2, top + (hasSubtitle ? 23 : height / 2 + 1), {
     color: palette.textFill,
     font: style.font
   });
+  if (hasSubtitle) {
+    drawCenterLabel(context, style.subtitle, left + width / 2, top + 41, {
+      color: palette.textFill,
+      font: "12px sans-serif"
+    });
+  }
 }
 
 function drawDifficultyBadge(context, left, top, width, height, label, selected, visualSpec) {
@@ -444,6 +452,20 @@ function createHomeScene(options) {
     context.fillText(visualSpec.initialExamAction, left + width - 18, top + height - 14);
   }
 
+  function getFoundationVisualSpec(visualSpec) {
+    return Object.assign({}, visualSpec, {
+      optionFill: "#e2f0e8",
+      optionInnerFill: "#f5fbf7",
+      optionSelectedFill: "#d4e8dd",
+      optionText: "#315447",
+      helperFill: "#6e9989",
+      badgeFill: "#d4e8dd",
+      badgeInnerFill: "#edf7f0",
+      badgeBorderFill: "#6e9989",
+      badgeTextFill: "#315447"
+    });
+  }
+
   function drawOutlinedDifficultyCard(context, left, top, width, height, label, selected, visualSpec, difficultyState) {
     drawDifficultyCard(context, left, top, width, height, "", label, selected, visualSpec, difficultyState);
   }
@@ -566,7 +588,7 @@ function createHomeScene(options) {
     context.fillText(visualSpec.currentDifficultyLabel, canvasWidth / 2, brandTop + (isEnglish ? 72 : 68));
   }
 
-  function drawPrimaryActions(context, metrics, hasSavedGame, visualSpec) {
+  function drawPrimaryActions(context, metrics, hasSavedGame, visualSpec, savedDifficultyLabel) {
     drawStackedButton(
       context,
       metrics.primaryButtonLeft,
@@ -586,7 +608,8 @@ function createHomeScene(options) {
       {
         radius: 22,
         innerRadius: 16,
-        font: "bold 19px sans-serif"
+        font: "bold 19px sans-serif",
+        subtitle: hasSavedGame ? savedDifficultyLabel : ""
       }
     );
 
@@ -631,8 +654,20 @@ function createHomeScene(options) {
       context.fillText(visualSpec.initialExamSubtitle, metrics.difficultyLeft, metrics.difficultyTop - 28);
       context.fillText(visualSpec.initialExamFallback, metrics.difficultyLeft, metrics.footerTop);
 
-      DIFFICULTIES.forEach(function (difficulty, index) {
-        const top = metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap);
+      drawOutlinedDifficultyCard(
+        context,
+        metrics.difficultyLeft,
+        metrics.difficultyTop,
+        metrics.difficultyWidth,
+        metrics.difficultyHeight,
+        t("difficulty.foundation"),
+        false,
+        getFoundationVisualSpec(visualSpec),
+        { unlocked: true }
+      );
+
+      EXAM_DIFFICULTIES.forEach(function (difficulty, index) {
+        const top = metrics.difficultyTop + (index + 1) * (metrics.difficultyHeight + metrics.difficultyGap);
         drawInitialExamDifficultyCard(
           context,
           metrics.difficultyLeft,
@@ -644,6 +679,7 @@ function createHomeScene(options) {
           visualSpec
         );
       });
+
       return;
     }
 
@@ -673,7 +709,7 @@ function createHomeScene(options) {
         selectedDifficulty,
         t("difficulty." + selectedDifficulty),
         true,
-        visualSpec,
+        selectedDifficulty === "foundation" ? getFoundationVisualSpec(visualSpec) : visualSpec,
         getDifficultyState(renderState, selectedDifficulty)
       );
       return;
@@ -687,7 +723,7 @@ function createHomeScene(options) {
       metrics.difficultyHeight,
       t("difficulty." + selectedDifficulty),
       true,
-      visualSpec,
+      selectedDifficulty === "foundation" ? getFoundationVisualSpec(visualSpec) : visualSpec,
       getDifficultyState(renderState, selectedDifficulty)
     );
 
@@ -703,7 +739,7 @@ function createHomeScene(options) {
         metrics.difficultyHeight,
         t("difficulty." + difficulty),
         false,
-        visualSpec,
+        difficulty === "foundation" ? getFoundationVisualSpec(visualSpec) : visualSpec,
         difficultyState
       );
     });
@@ -792,6 +828,9 @@ function createHomeScene(options) {
       : function (key) {
           return key;
         };
+    const savedDifficultyLabel = renderState && renderState.savedGameDifficulty
+      ? t("difficulty." + renderState.savedGameDifficulty)
+      : "";
     const metrics = getMetrics(renderState);
     const visualSpec = getVisualSpec(renderState);
 
@@ -800,7 +839,7 @@ function createHomeScene(options) {
     drawBrandBackdrop(context, metrics, visualSpec);
     drawBrandText(context, metrics, visualSpec);
     if (!initialExamChoiceVisible) {
-      drawPrimaryActions(context, metrics, hasSavedGame, visualSpec);
+      drawPrimaryActions(context, metrics, hasSavedGame, visualSpec, savedDifficultyLabel);
       drawReturnCard(context, metrics, visualSpec, renderState ? renderState.homeReturnCard : null);
     }
     drawDifficultyPicker(context, metrics, selectedDifficulty, pickerOpen, visualSpec, t, renderState);
@@ -823,9 +862,13 @@ function createHomeScene(options) {
     const lockedDifficultyDialog = state && state.lockedDifficultyDialog ? state.lockedDifficultyDialog : null;
 
     if (initialExamChoiceVisible) {
-      for (let index = 0; index < DIFFICULTIES.length; index += 1) {
-        const difficulty = DIFFICULTIES[index];
-        const top = metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap);
+      if (isInsideRect(x, y, metrics.difficultyLeft, metrics.difficultyTop, metrics.difficultyWidth, metrics.difficultyHeight)) {
+        return { type: "difficulty", value: "foundation" };
+      }
+
+      for (let index = 0; index < EXAM_DIFFICULTIES.length; index += 1) {
+        const difficulty = EXAM_DIFFICULTIES[index];
+        const top = metrics.difficultyTop + (index + 1) * (metrics.difficultyHeight + metrics.difficultyGap);
 
         if (isInsideRect(x, y, metrics.difficultyLeft, top, metrics.difficultyWidth, metrics.difficultyHeight)) {
           return { type: "action", value: "start-initial-exam:" + difficulty };

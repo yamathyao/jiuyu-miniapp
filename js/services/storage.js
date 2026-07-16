@@ -1,11 +1,22 @@
 const { createEmptyStats } = require("./stats-service");
 const { createEmptyProgress } = require("./progress-service");
+const {
+  createEmptyTutorialProgress,
+  normalizeTutorialProgress,
+  isValidTutorialState
+} = require("./tutorial-service");
+const {
+  createEmptyPuzzleSelectionHistory,
+  normalizePuzzleSelectionHistory
+} = require("./puzzle-selection-service");
 
 const STORAGE_KEYS = {
   currentGame: "jiuyu.currentGame",
   settings: "jiuyu.settings",
   stats: "jiuyu.stats",
-  progress: "jiuyu.progress"
+  progress: "jiuyu.progress",
+  tutorialProgress: "jiuyu.tutorialProgress",
+  puzzleSelectionHistory: "jiuyu.puzzleSelectionHistory"
 };
 
 function getStorageApi(storageApi) {
@@ -111,7 +122,13 @@ function loadCurrentGame(defaultGame, storageApi) {
     return fallbackSession;
   }
 
-  return savedSession;
+  const restoredSession = Object.assign({}, savedSession);
+
+  if (!isValidTutorialState(restoredSession.tutorialState)) {
+    delete restoredSession.tutorialState;
+  }
+
+  return restoredSession;
 }
 
 function saveCurrentGame(session, storageApi) {
@@ -224,6 +241,38 @@ function saveProgress(progress, storageApi) {
   return writeStorage(STORAGE_KEYS.progress, progress, storageApi);
 }
 
+function loadTutorialProgress(storageApi) {
+  const savedProgress = readStorage(STORAGE_KEYS.tutorialProgress, null, storageApi);
+
+  return savedProgress
+    ? normalizeTutorialProgress(savedProgress)
+    : createEmptyTutorialProgress();
+}
+
+function saveTutorialProgress(progress, storageApi) {
+  return writeStorage(
+    STORAGE_KEYS.tutorialProgress,
+    normalizeTutorialProgress(progress),
+    storageApi
+  );
+}
+
+function loadPuzzleSelectionHistory(puzzles, storageApi) {
+  const savedHistory = readStorage(STORAGE_KEYS.puzzleSelectionHistory, null, storageApi);
+
+  return savedHistory
+    ? normalizePuzzleSelectionHistory(savedHistory, puzzles)
+    : createEmptyPuzzleSelectionHistory();
+}
+
+function savePuzzleSelectionHistory(history, puzzles, storageApi) {
+  return writeStorage(
+    STORAGE_KEYS.puzzleSelectionHistory,
+    normalizePuzzleSelectionHistory(history, puzzles),
+    storageApi
+  );
+}
+
 module.exports = {
   STORAGE_KEYS,
   readStorage,
@@ -235,5 +284,9 @@ module.exports = {
   loadStats,
   saveStats,
   loadProgress,
-  saveProgress
+  saveProgress,
+  loadTutorialProgress,
+  saveTutorialProgress,
+  loadPuzzleSelectionHistory,
+  savePuzzleSelectionHistory
 };

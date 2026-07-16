@@ -57,7 +57,7 @@ function summarizeDifficulty(difficultyPuzzles) {
 
 function main() {
   const groups = groupPuzzlesByDifficulty(puzzles);
-  const orderedDifficulties = ["beginner", "intermediate", "skilled", "expert"];
+  const orderedDifficulties = ["foundation", "beginner", "intermediate", "skilled", "expert"];
 
   console.log("Puzzle summary");
 

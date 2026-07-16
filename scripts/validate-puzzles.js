@@ -8,6 +8,7 @@ const {
 } = require("./puzzle-structure");
 
 const VALID_DIFFICULTIES = {
+  foundation: true,
   beginner: true,
   intermediate: true,
   skilled: true,
@@ -129,6 +130,48 @@ function validateHintMetadata(puzzle, errors) {
   }
 }
 
+function validateTutorialSteps(puzzle, errors) {
+  if (puzzle.difficulty !== "foundation") {
+    return;
+  }
+
+  if (!Array.isArray(puzzle.tutorialSteps) || puzzle.tutorialSteps.length === 0) {
+    errors.push(puzzle.id + ": foundation puzzles must provide tutorialSteps.");
+    return;
+  }
+
+  puzzle.tutorialSteps.forEach(function (step, stepIndex) {
+    const label = puzzle.id + ": tutorialSteps[" + stepIndex + "]";
+
+    if (!step || typeof step !== "object") {
+      errors.push(label + " must be an object.");
+      return;
+    }
+
+    if (!isGridIndex(step.targetIndex)) {
+      errors.push(label + ".targetIndex must be an integer from 0 to 80.");
+    } else if (puzzle.puzzle[step.targetIndex] !== "0") {
+      errors.push(label + ".targetIndex must point to an editable cell.");
+    }
+
+    if (!Array.isArray(step.relatedIndexes)) {
+      errors.push(label + ".relatedIndexes must be an array.");
+    } else {
+      step.relatedIndexes.forEach(function (index, relatedIndex) {
+        if (!isGridIndex(index)) {
+          errors.push(label + ".relatedIndexes[" + relatedIndex + "] must be an integer from 0 to 80.");
+        } else if (index === step.targetIndex) {
+          errors.push(label + ".relatedIndexes cannot contain targetIndex.");
+        }
+      });
+    }
+
+    if (typeof step.explanationKey !== "string" || step.explanationKey.length === 0) {
+      errors.push(label + ".explanationKey must be a non-empty string.");
+    }
+  });
+}
+
 function validatePuzzle(puzzle, seenIds, errors) {
   if (!puzzle || typeof puzzle !== "object") {
     errors.push("Puzzle entry must be an object.");
@@ -176,6 +219,7 @@ function validatePuzzle(puzzle, seenIds, errors) {
     errors.push(puzzle.id + ": puzzle must have exactly one solution.");
   }
   validateHintMetadata(puzzle, errors);
+  validateTutorialSteps(puzzle, errors);
 }
 
 function validatePuzzleBank(sourcePuzzles) {
@@ -238,6 +282,7 @@ module.exports = {
   VALID_DIFFICULTIES,
   VALID_TECHNIQUES,
   countSolutions,
+  validateTutorialSteps,
   validatePuzzle,
   validatePuzzleBank
 };

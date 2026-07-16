@@ -5,6 +5,7 @@ const LOCALES = {
       secondsShort: "s"
     },
     difficulty: {
+      foundation: "零基础教学",
       beginner: "新手",
       intermediate: "进阶",
       skilled: "熟练",
@@ -141,6 +142,44 @@ const LOCALES = {
       examDifficultyLabel: "{difficulty}考试",
       examRemaining: "剩余 {time}"
     },
+    tutorial: {
+      title: "零基础教学",
+      subtitle: "跟着每一步，认识数独的基本规则。",
+      lessonStart: "开始学习",
+      lessonReplay: "再次练习",
+      lessonLocked: "完成上一课后开启",
+      steps: {
+        row: "可以从高亮的一行观察数字。行内每个数字只能出现一次，找出缺少的数字后填入粉色格。",
+        column: "可以从高亮的一列观察数字。列内每个数字只能出现一次，找出缺少的数字后填入粉色格。",
+        box: "可以从高亮的 3×3 宫观察数字。宫内每个数字只能出现一次，找出缺少的数字后填入粉色格。"
+      },
+      incorrect: "这个数字不符合当前的行、列或宫。再看高亮区域。",
+      blocked: "先完成当前高亮格，再继续下一步。",
+      lessons: {
+        "foundation-001": { title: "第一课：看一行", summary: "观察高亮一行中的数字，补上缺少的一格。" },
+        "foundation-002": { title: "第二课：看一列", summary: "观察高亮一列中的数字，补上缺少的一格。" },
+        "foundation-003": { title: "第三课：看一宫", summary: "观察高亮 3×3 宫中的数字，补上缺少的一格。" }
+      },
+      lessonComplete: {
+        ok: "知道了",
+        "foundation-001": {
+          title: "第一课完成",
+          achievement: "你已经知道：每一行都要包含 1-9。",
+          advice: "下一课沿着一列观察，继续找出缺少的数字。"
+        },
+        "foundation-002": {
+          title: "第二课完成",
+          achievement: "你已经知道：每一列都要包含 1-9。",
+          advice: "最后一课观察 3×3 宫，复习数独的第三条基本规则。"
+        }
+      },
+      graduation: {
+        title: "三课完成",
+        encouragement: "你已经掌握数独最基础的观察方式。",
+        startBeginner: "进入新手局",
+        replay: "重练课程"
+      }
+    },
     share: {
       friendTitle: "方庭九屿：一款本地优先的数独微信小游戏",
       timelineTitle: "方庭九屿｜本地优先的数独小游戏"
@@ -206,6 +245,7 @@ const LOCALES = {
       secondsShort: "s"
     },
     difficulty: {
+      foundation: "Foundations",
       beginner: "Beginner",
       intermediate: "Intermediate",
       skilled: "Skilled",
@@ -342,6 +382,44 @@ const LOCALES = {
       examDifficultyLabel: "{difficulty} Exam",
       examRemaining: "Remaining {time}"
     },
+    tutorial: {
+      title: "Sudoku Foundations",
+      subtitle: "Follow each step to learn the core rules.",
+      lessonStart: "Start lesson",
+      lessonReplay: "Practice again",
+      lessonLocked: "Finish the previous lesson first",
+      steps: {
+        row: "You can start with the highlighted row. Each digit appears once in a row, so fill the pink cell with the missing digit.",
+        column: "You can start with the highlighted column. Each digit appears once in a column, so fill the pink cell with the missing digit.",
+        box: "You can start with the highlighted 3 by 3 box. Each digit appears once in a box, so fill the pink cell with the missing digit."
+      },
+      incorrect: "That digit does not fit the current row, column, or box. Check the highlight again.",
+      blocked: "Finish the highlighted cell before moving on.",
+      lessons: {
+        "foundation-001": { title: "Lesson 1: Read a row", summary: "Use the highlighted row to fill one missing cell." },
+        "foundation-002": { title: "Lesson 2: Read a column", summary: "Use the highlighted column to fill one missing cell." },
+        "foundation-003": { title: "Lesson 3: Read a box", summary: "Use the highlighted 3 by 3 box to fill one missing cell." }
+      },
+      lessonComplete: {
+        ok: "Got it",
+        "foundation-001": {
+          title: "Lesson 1 complete",
+          achievement: "You now know that every row contains the digits 1 through 9.",
+          advice: "Next, follow a column and find its missing digit."
+        },
+        "foundation-002": {
+          title: "Lesson 2 complete",
+          achievement: "You now know that every column contains the digits 1 through 9.",
+          advice: "In the final lesson, use a 3 by 3 box to learn the third core rule."
+        }
+      },
+      graduation: {
+        title: "Three lessons complete",
+        encouragement: "You now know the core way to observe a Sudoku board.",
+        startBeginner: "Play Beginner",
+        replay: "Practice lessons"
+      }
+    },
     share: {
       friendTitle: "Fangting Jiuyu: a local-first Sudoku WeChat game",
       timelineTitle: "Fangting Jiuyu | A local-first Sudoku mini game"
@@ -407,6 +485,7 @@ const LOCALES = {
       secondsShort: "秒"
     },
     difficulty: {
+      foundation: "入門レッスン",
       beginner: "初級",
       intermediate: "中級",
       skilled: "上級",
@@ -542,6 +621,44 @@ const LOCALES = {
       examFailed: "試験不合格",
       examDifficultyLabel: "{difficulty}試験",
       examRemaining: "残り {time}"
+    },
+    tutorial: {
+      title: "数独の基礎レッスン",
+      subtitle: "一手ずつ進めながら、基本ルールを学びます。",
+      lessonStart: "レッスン開始",
+      lessonReplay: "もう一度練習",
+      lessonLocked: "前のレッスンを完了すると開放されます",
+      steps: {
+        row: "強調された行から見てみましょう。行内では各数字が一度ずつ現れるため、足りない数字をピンクのマスに入れます。",
+        column: "強調された列から見てみましょう。列内では各数字が一度ずつ現れるため、足りない数字をピンクのマスに入れます。",
+        box: "強調された 3×3 ブロックから見てみましょう。ブロック内では各数字が一度ずつ現れるため、足りない数字をピンクのマスに入れます。"
+      },
+      incorrect: "その数字は現在の行、列、ブロックに合いません。強調部分をもう一度見ましょう。",
+      blocked: "先に強調されたマスを完成させましょう。",
+      lessons: {
+        "foundation-001": { title: "第1課：行を見る", summary: "強調された行を見て、一つのマスを埋めます。" },
+        "foundation-002": { title: "第2課：列を見る", summary: "強調された列を見て、一つのマスを埋めます。" },
+        "foundation-003": { title: "第3課：ブロックを見る", summary: "強調された 3×3 ブロックを見て、一つのマスを埋めます。" }
+      },
+      lessonComplete: {
+        ok: "わかりました",
+        "foundation-001": {
+          title: "第1課を完了",
+          achievement: "各行には 1 から 9 までの数字が一度ずつ入ることを学びました。",
+          advice: "次は列をたどって、足りない数字を探しましょう。"
+        },
+        "foundation-002": {
+          title: "第2課を完了",
+          achievement: "各列には 1 から 9 までの数字が一度ずつ入ることを学びました。",
+          advice: "最後の課では 3×3 ブロックを見て、三つ目の基本ルールを学びましょう。"
+        }
+      },
+      graduation: {
+        title: "3つのレッスンを完了",
+        encouragement: "数独を観察する基本を身につけました。",
+        startBeginner: "初級を始める",
+        replay: "レッスンを練習"
+      }
     },
     share: {
       friendTitle: "方庭九屿：ローカルファーストの数独WeChatミニゲーム",
