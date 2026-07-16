@@ -1,5 +1,6 @@
 const { puzzles } = require("../js/data/puzzles");
 const { getRow, getColumn, getBox } = require("../js/utils/sudoku");
+const { countSolutions } = require("./sudoku-solver");
 const {
   STRUCTURE_MINIMUMS,
   groupPuzzlesByDifficulty,
@@ -171,6 +172,9 @@ function validatePuzzle(puzzle, seenIds, errors) {
   }
 
   validateSolutionUnits(puzzle, errors);
+  if (countSolutions(puzzle.puzzle, 2) !== 1) {
+    errors.push(puzzle.id + ": puzzle must have exactly one solution.");
+  }
   validateHintMetadata(puzzle, errors);
 }
 
@@ -233,6 +237,7 @@ if (require.main === module) {
 module.exports = {
   VALID_DIFFICULTIES,
   VALID_TECHNIQUES,
+  countSolutions,
   validatePuzzle,
   validatePuzzleBank
 };

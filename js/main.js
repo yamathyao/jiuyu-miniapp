@@ -819,6 +819,12 @@ function boot() {
     drawBoard();
   }
 
+  if (typeof wx.onShow === "function") {
+    wx.onShow(function () {
+      draw();
+    });
+  }
+
   wx.onTouchStart(function (event) {
     const point = getTouchPoint(event);
 
@@ -980,6 +986,12 @@ function boot() {
       if (toolbarAction.value === "hint") {
         hintCount += 1;
         const localizedHint = getNextHint(game, game.difficulty, hintState, t);
+        const hintTargetCell = game.cells[localizedHint.targetIndex];
+        const nextSelectedIndex = hintTargetCell &&
+          !hintTargetCell.given &&
+          !hintTargetCell.value
+          ? localizedHint.targetIndex
+          : selectedIndex;
         feedbackMessage = localizedHint.message;
         feedbackType = "info";
         issueIndexes = [];
@@ -989,6 +1001,7 @@ function boot() {
           relatedIndexes: localizedHint.relatedIndexes || [],
           progress: localizedHint.progress || null
         };
+        applyGameSnapshot(game, nextSelectedIndex, false);
       }
 
       if (toolbarAction.value === "check") {
