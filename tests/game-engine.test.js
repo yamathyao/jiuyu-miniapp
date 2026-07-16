@@ -4,10 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { puzzles } = require("../js/data/puzzles");
+const { foundationLessons } = require("../js/data/puzzles-foundation");
 const { createHomeScene } = require("../js/scene/home-scene");
 const { createBoardScene } = require("../js/scene/board-scene");
 const { createSettingsScene } = require("../js/scene/settings-scene");
 const { createLanguageScene } = require("../js/scene/language-scene");
+const { createTutorialScene } = require("../js/scene/tutorial-scene");
 const { createToolbar } = require("../js/ui/toolbar");
 const { getTouchPoint } = require("../js/utils/touch");
 const {
@@ -29,7 +31,11 @@ const {
   loadStats,
   saveStats,
   loadProgress,
-  saveProgress
+  saveProgress,
+  loadTutorialProgress,
+  saveTutorialProgress,
+  loadPuzzleSelectionHistory,
+  savePuzzleSelectionHistory
 } = require("../js/services/storage");
 const {
   createCompletionSummary,
@@ -49,6 +55,7 @@ const {
   registerShareSupport
 } = require("../js/services/share-service");
 const {
+  countSolutions,
   validatePuzzle,
   validatePuzzleBank
 } = require("../scripts/validate-puzzles");
@@ -63,6 +70,19 @@ const {
   getDifficultyPolicy
 } = require("../js/services/difficulty-policy");
 const {
+  createEmptyTutorialProgress,
+  isLessonUnlocked,
+  validateTutorialInput
+} = require("../js/services/tutorial-service");
+const {
+  createEmptyPuzzleSelectionHistory,
+  normalizePuzzleSelectionHistory,
+  selectNormalPuzzle,
+  selectExamPuzzle,
+  recordPuzzleCompletion,
+  recordTimedOutExam
+} = require("../js/services/puzzle-selection-service");
+const {
   checkConflicts,
   checkAgainstSolution,
   runDifficultyCheck
@@ -74,6 +94,20 @@ const {
   normalizeLocale,
   createTranslator
 } = require("../js/i18n");
+
+function withEditableCells(game, indexes) {
+  const editableIndexes = new Set(indexes);
+
+  return Object.assign({}, game, {
+    cells: game.cells.map(function (cell, index) {
+      if (!editableIndexes.has(index)) {
+        return cell;
+      }
+
+      return Object.assign({}, cell, { given: false, value: "" });
+    })
+  });
+}
 
 test("applyInputValue writes a value into an editable cell", function () {
   const game = createGame(puzzles[0]);
@@ -207,7 +241,7 @@ test("createGame copies advanced hint metadata from the puzzle", function () {
   const puzzle = {
     id: "expert-metadata",
     difficulty: "expert",
-    puzzle: "000000012000000003002300000070050000000000000000040080000009600400000000830000000",
+    puzzle: "000970000080000090002018005006002900000007030001040000200039670400500000000000100",
     solution: "653974812184265793792318465376852941548197236921643587215439678467581329839726154",
     techniques: ["x-wing", "xy-wing"],
     hint: {
@@ -363,6 +397,40 @@ test("loadCurrentGame restores a valid saved session", function () {
   assert.equal(restored.game.history.length, 1);
 });
 
+test("loadCurrentGame keeps only a well-formed tutorial state", function () {
+  const savedSession = {
+    game: createGame(foundationLessons[0]),
+    selectedIndex: 2,
+    noteMode: false,
+    tutorialState: { lessonId: "foundation-001", stepIndex: 0 }
+  };
+  const restored = loadCurrentGame(createGame(puzzles[0]), {
+    getStorageSync: function () {
+      return savedSession;
+    }
+  });
+
+  assert.deepEqual(restored.tutorialState, savedSession.tutorialState);
+
+  savedSession.tutorialState = { lessonId: "foundation-001", stepIndex: -1 };
+  const sanitized = loadCurrentGame(createGame(puzzles[0]), {
+    getStorageSync: function () {
+      return savedSession;
+    }
+  });
+
+  assert.equal(sanitized.tutorialState, undefined);
+
+  savedSession.tutorialState = { lessonId: "foundation-001", stepIndex: 5 };
+  const outOfRange = loadCurrentGame(createGame(puzzles[0]), {
+    getStorageSync: function () {
+      return savedSession;
+    }
+  });
+
+  assert.equal(outOfRange.tutorialState, undefined);
+});
+
 test("loadCurrentGame falls back to a fresh session and saveCurrentGame writes the session", function () {
   const defaultGame = createGame(puzzles[0]);
   const writes = [];
@@ -439,6 +507,237 @@ test("settings and board scenes keep their main content slightly lower", functio
   assert.equal(settingsScene.getMetrics().backTop, 108);
   assert.equal(boardScene.getMetrics().headerPanelTop, 82);
   assert.equal(languageScene.getMetrics().shellTop, 144);
+});
+
+test("tutorial lesson order and input validation stay deterministic", function () {
+  const lesson = foundationLessons[0];
+  const game = createGame(lesson);
+  const targetIndex = lesson.tutorialSteps[0].targetIndex;
+  const expectedValue = game.solution[targetIndex];
+  const wrongValue = expectedValue === "1" ? "2" : "1";
+  const progress = createEmptyTutorialProgress();
+
+  assert.equal(isLessonUnlocked(progress, "foundation-001"), true);
+  assert.equal(isLessonUnlocked(progress, "foundation-002"), false);
+  assert.equal(validateTutorialInput(lesson, game, 0, targetIndex + 1, expectedValue).status, "blocked");
+  assert.equal(validateTutorialInput(lesson, game, 0, targetIndex, wrongValue).status, "incorrect");
+  assert.equal(validateTutorialInput(lesson, game, 0, targetIndex, expectedValue).status, "correct");
+  assert.equal(
+    validateTutorialInput(
+      lesson,
+      game,
+      lesson.tutorialSteps.length - 1,
+      lesson.tutorialSteps[lesson.tutorialSteps.length - 1].targetIndex,
+      game.solution[lesson.tutorialSteps[lesson.tutorialSteps.length - 1].targetIndex]
+    ).status,
+    "complete"
+  );
+});
+
+test("foundation lessons keep a sparse board with three local teaching targets", function () {
+  foundationLessons.forEach(function (lesson) {
+    const givenCount = lesson.puzzle.replace(/0/g, "").length;
+
+    assert.equal(lesson.tutorialSteps.length, 3);
+    assert.ok(givenCount >= 40 && givenCount <= 55);
+    lesson.tutorialSteps.forEach(function (step) {
+      assert.equal(lesson.puzzle[step.targetIndex], "0");
+      assert.equal(step.relatedIndexes.length, 8);
+      assert.equal(
+        step.relatedIndexes.every(function (index) {
+          return lesson.puzzle[index] !== "0";
+        }),
+        true
+      );
+    });
+  });
+});
+
+test("settings scene exposes the foundation course entry", function () {
+  const settingsScene = createSettingsScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const renderState = { t: createTranslator("zh-CN") };
+  const metrics = settingsScene.getMetrics(renderState);
+
+  assert.deepEqual(
+    settingsScene.hitTest(
+      metrics.tutorialCardLeft + 12,
+      metrics.tutorialCardTop + 12,
+      renderState
+    ),
+    { type: "action", value: "open-tutorial" }
+  );
+});
+
+test("tutorial toolbar hides unavailable tools while retaining number input", function () {
+  const toolbar = createToolbar({
+    canvasWidth: 375,
+    canvasHeight: 812,
+    boardMetrics: createBoardScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics()
+  });
+  const metrics = toolbar.getMetrics();
+
+  assert.equal(
+    toolbar.hitTest(metrics.left + 12, metrics.toolTop + 12, { hideTools: true }),
+    null
+  );
+  assert.deepEqual(
+    toolbar.hitTest(metrics.left + 12, metrics.top + 12, { hideTools: true }),
+    { type: "number", value: "1" }
+  );
+});
+
+test("tutorial scene keeps its header in the safe area without object-style text", function () {
+  const texts = [];
+  const tutorialScene = createTutorialScene({ canvasWidth: 375, canvasHeight: 812 });
+  const metrics = tutorialScene.getMetrics();
+  const context = {
+    fillStyle: "",
+    strokeStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    lineWidth: 1,
+    fillRect: function () {},
+    beginPath: function () {},
+    moveTo: function () {},
+    lineTo: function () {},
+    arcTo: function () {},
+    closePath: function () {},
+    fill: function () {},
+    stroke: function () {},
+    fillText: function (text) { texts.push(String(text)); }
+  };
+
+  tutorialScene.draw(context, {
+    lessons: foundationLessons,
+    lessonStates: {},
+    t: createTranslator("zh-CN")
+  });
+
+  assert.ok(metrics.headerTop >= 92);
+  assert.equal(metrics.backWidth, 42);
+  assert.ok(metrics.backTop + metrics.backHeight <= metrics.titleTop - 12);
+  assert.equal(texts.includes("<"), true);
+  assert.equal(texts.includes("返回"), false);
+  assert.equal(texts.includes("[object Object]"), false);
+  assert.deepEqual(
+    tutorialScene.hitTest(metrics.cardLeft + 12, metrics.cardTop + 12, {
+      lessons: foundationLessons,
+      lessonStates: {}
+    }),
+    { type: "lesson", value: "foundation-001" }
+  );
+});
+
+test("tutorial scene wraps a long header hint inside its panel", function () {
+  const tutorialScene = require("../js/scene/tutorial-scene").createTutorialScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const longHint = "这是一个需要在教学页顶部自动换行的较长提示文案，不能超出课程标题面板的左右边界。";
+  const hintDraws = [];
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1, strokeStyle: "",
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {}, closePath: function () {},
+    fill: function () {}, stroke: function () {}, fillRect: function () {},
+    measureText: function (text) { return { width: String(text).length * 12 }; },
+    fillText: function (text, x) {
+      const value = String(text);
+      if (value && longHint.indexOf(value) >= 0) {
+        hintDraws.push({ text: value, x: x });
+      }
+    }
+  };
+  const t = function (key) {
+    return key === "tutorial.subtitle" ? longHint : key;
+  };
+
+  tutorialScene.draw(context, { lessons: [], lessonStates: {}, t: t });
+
+  assert.ok(hintDraws.length > 1);
+  hintDraws.forEach(function (draw) {
+    assert.ok(draw.text.length * 12 <= 288);
+  });
+});
+
+test("foundation appears before beginner in the initial difficulty choice", function () {
+  const homeScene = createHomeScene({ canvasWidth: 375, canvasHeight: 812 });
+  const state = {
+    initialExamChoiceVisible: true,
+    selectedDifficulty: "beginner",
+    t: createTranslator("zh-CN")
+  };
+  const metrics = homeScene.getMetrics(state);
+
+  assert.deepEqual(
+    homeScene.hitTest(metrics.difficultyLeft + 12, metrics.difficultyTop + 12, state),
+    { type: "difficulty", value: "foundation" }
+  );
+  assert.deepEqual(
+    homeScene.hitTest(
+      metrics.difficultyLeft + 12,
+      metrics.difficultyTop + metrics.difficultyHeight + metrics.difficultyGap + 12,
+      state
+    ),
+    { type: "action", value: "start-initial-exam:beginner" }
+  );
+});
+
+test("puzzle selection history prioritizes unfinished normal puzzles", function () {
+  const completed = recordPuzzleCompletion(
+    createEmptyPuzzleSelectionHistory(),
+    "beginner-001",
+    puzzles
+  );
+
+  assert.deepEqual(completed.completedPuzzleIdsByDifficulty.beginner, ["beginner-001"]);
+  assert.equal(selectNormalPuzzle(puzzles, "beginner", completed, {}).id, "beginner-002");
+});
+
+test("puzzle selection history applies one timed-out exam cooldown", function () {
+  const history = recordTimedOutExam(
+    createEmptyPuzzleSelectionHistory(),
+    "beginner-001",
+    puzzles
+  );
+  const examPuzzle = selectExamPuzzle(puzzles, "beginner", history, function () { return 0; });
+
+  assert.deepEqual(history.recentExamPuzzleIdsByDifficulty.beginner, ["beginner-001"]);
+  assert.equal(examPuzzle.id, "beginner-002");
+});
+
+test("puzzle selection history normalizes invalid IDs and falls back after a full bank", function () {
+  const normalized = normalizePuzzleSelectionHistory({
+    completedPuzzleIdsByDifficulty: {
+      beginner: ["beginner-001", "expert-001", "missing", "beginner-001"]
+    },
+    recentExamPuzzleIdsByDifficulty: {
+      beginner: ["expert-001", "beginner-002"]
+    }
+  }, puzzles);
+  const tinyBank = puzzles.filter(function (puzzle) {
+    return puzzle.id === "beginner-001" || puzzle.id === "beginner-002";
+  });
+  const fullHistory = recordPuzzleCompletion(
+    recordPuzzleCompletion(createEmptyPuzzleSelectionHistory(), "beginner-001", tinyBank),
+    "beginner-002",
+    tinyBank
+  );
+
+  assert.deepEqual(normalized.completedPuzzleIdsByDifficulty.beginner, ["beginner-001"]);
+  assert.deepEqual(normalized.recentExamPuzzleIdsByDifficulty.beginner, ["beginner-002"]);
+  assert.equal(selectNormalPuzzle(tinyBank, "beginner", fullHistory, {}).id, "beginner-001");
+  assert.equal(
+    selectExamPuzzle([tinyBank[0]], "beginner", recordTimedOutExam(
+      createEmptyPuzzleSelectionHistory(),
+      "beginner-001",
+      tinyBank
+    ), function () { return 0; }).id,
+    "beginner-001"
+  );
 });
 
 test("getDifficultyPolicy returns the expected hint and check rules", function () {
@@ -744,7 +1043,7 @@ test("expert technique hint wording changes with the tagged technique", function
     return puzzle.difficulty === "expert";
   });
   const expertGame = createGame(expertPuzzle);
-  const xyWingGame = Object.assign({}, expertGame, {
+  const xyWingGame = Object.assign({}, withEditableCells(expertGame, [54, 55, 56]), {
     hint: {
       primaryTechnique: "xy-wing",
       targetIndex: 55,
@@ -832,7 +1131,7 @@ test("advanced hints can return related cell indexes for multi-cell highlighting
       }
     }
   });
-  const xyWingGame = Object.assign({}, createGame(expertPuzzle), {
+  const xyWingGame = Object.assign({}, withEditableCells(createGame(expertPuzzle), [54, 55, 56]), {
     hint: {
       primaryTechnique: "xy-wing",
       targetIndex: 55,
@@ -1274,7 +1573,7 @@ test("home scene only exposes more difficulty options after the picker expands",
         difficultyPickerOpen: true
       }
     ),
-    { type: "difficulty", value: "intermediate" }
+    { type: "difficulty", value: "foundation" }
   );
 });
 
@@ -1291,7 +1590,7 @@ test("home scene keeps locked difficulties in the picker payload", function () {
 
   const lockedHit = homeScene.hitTest(
     metrics.difficultyLeft + 20,
-    metrics.difficultyTop + metrics.difficultyHeight + metrics.difficultyGap + 20,
+    metrics.difficultyTop + 2 * (metrics.difficultyHeight + metrics.difficultyGap) + 20,
     {
       selectedDifficulty: "beginner",
       difficultyPickerOpen: true,
@@ -1337,7 +1636,7 @@ test("home scene exposes initial exam difficulty actions on first entry", functi
         }
       }
     ),
-    { type: "action", value: "start-initial-exam:beginner" }
+    { type: "difficulty", value: "foundation" }
   );
 
   assert.deepEqual(
@@ -1356,7 +1655,7 @@ test("home scene exposes initial exam difficulty actions on first entry", functi
         }
       }
     ),
-    { type: "action", value: "start-initial-exam:intermediate" }
+    { type: "action", value: "start-initial-exam:beginner" }
   );
 });
 
@@ -1975,9 +2274,89 @@ test("board scene exposes layered completion actions by difficulty", function ()
   const expertActions = boardScene.getCompletionActions({
     difficulty: "expert"
   });
+  const tutorialLessonActions = boardScene.getCompletionActions({
+    difficulty: "foundation",
+    tutorialLesson: true
+  });
 
   assert.deepEqual(beginnerActions, ["new-game", "home"]);
   assert.deepEqual(expertActions, ["new-game", "home", "stats"]);
+  assert.deepEqual(tutorialLessonActions, ["continue-tutorial"]);
+});
+
+test("home scene shows the saved game's difficulty beneath continue", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const drawnTexts = [];
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1, strokeStyle: "",
+    fillRect: function () {}, fillText: function (text) { drawnTexts.push(String(text)); },
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {}, closePath: function () {},
+    fill: function () {}, stroke: function () {}
+  };
+
+  homeScene.draw(context, {
+    hasSavedGame: true,
+    savedGameDifficulty: "expert",
+    selectedDifficulty: "beginner",
+    t: createTranslator("zh-CN")
+  });
+
+  assert.equal(drawnTexts.includes("继续游戏"), true);
+  assert.equal(drawnTexts.includes("专家"), true);
+});
+
+test("board scene wraps English tutorial completion copy at word boundaries", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const achievement = "You now know that every row contains the digits 1 through 9.";
+  const advice = "Next, follow a column and find its missing digit.";
+  const copyLines = [];
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1, strokeStyle: "",
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {}, closePath: function () {},
+    fill: function () {}, stroke: function () {}, fillRect: function () {},
+    measureText: function (text) { return { width: String(text).length * 10 }; },
+    fillText: function (text) {
+      const value = String(text);
+      if (value.length > 1 && (achievement.indexOf(value) >= 0 || advice.indexOf(value) >= 0)) {
+        copyLines.push(value);
+      }
+    }
+  };
+
+  boardScene.draw(context, buildBoardView(createGame(puzzles[0]), -1), {
+    theme: {},
+    feedbackMessage: "",
+    feedbackType: "info",
+    completionVisible: true,
+    completionSummary: {
+      difficulty: "foundation",
+      tutorialLesson: true,
+      resultTags: [],
+      title: "Lesson 1 complete",
+      achievement: achievement,
+      encouragement: advice
+    },
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("en"),
+    title: "Fangting Jiuyu",
+    difficultyLabel: "Foundations",
+    settingsLabel: "Settings"
+  });
+
+  assert.deepEqual(copyLines, [
+    "You now know that every",
+    "row contains the digits 1",
+    "through 9.",
+    "Next, follow a column and",
+    "find its missing digit."
+  ]);
 });
 
 test("board scene wraps long feedback messages into multiple lines", function () {
@@ -2026,6 +2405,102 @@ test("board scene wraps long feedback messages into multiple lines", function ()
   });
 
   assert.ok(feedbackDraws.length >= 2);
+});
+
+test("board scene keeps an unbroken feedback word inside the board width", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const feedbackMessage = "supercalifragilisticexpialidocioussupercalifragilisticexpialidocious";
+  const feedbackDraws = [];
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1, strokeStyle: "",
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {}, closePath: function () {},
+    fill: function () {}, stroke: function () {}, fillRect: function () {},
+    measureText: function (text) { return { width: String(text).length * 10 }; },
+    fillText: function (text, x) {
+      if (feedbackMessage.indexOf(String(text)) >= 0) {
+        feedbackDraws.push({ text: String(text), x: x });
+      }
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: feedbackMessage,
+    feedbackType: "info",
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "新手",
+    settingsLabel: "设置"
+  });
+
+  const metrics = boardScene.getMetrics();
+  assert.ok(feedbackDraws.length > 1);
+  feedbackDraws.forEach(function (draw) {
+    assert.ok(draw.x + draw.text.length * 10 <= metrics.boardLeft + metrics.boardSize - 12);
+  });
+});
+
+test("board scene keeps the third tutorial hint below the header", function () {
+  const boardScene = createBoardScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const metrics = boardScene.getMetrics();
+  const cells = buildBoardView(createGame(puzzles[0]), -1);
+  const feedbackMessage = createTranslator("zh-CN")("tutorial.steps.box");
+  const feedbackPanelTops = [];
+  const feedbackLines = [];
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1, strokeStyle: "",
+    beginPath: function () {},
+    moveTo: function (x, y) {
+      if (x === metrics.boardLeft && y < metrics.boardTop) {
+        feedbackPanelTops.push(y);
+      }
+    },
+    lineTo: function () {}, closePath: function () {},
+    fill: function () {}, stroke: function () {},
+    fillRect: function () {},
+    measureText: function (text) {
+      const size = Number(/(\d+)px/.exec(this.font || "")?.[1] || 15);
+      return { width: String(text).length * size };
+    },
+    fillText: function (text, x, y) {
+      const value = String(text);
+      if (value && y < metrics.boardTop && feedbackMessage.indexOf(value) >= 0) {
+        const size = Number(/(\d+)px/.exec(this.font || "")?.[1] || 15);
+        feedbackLines.push({ width: value.length * size, x: x });
+      }
+    }
+  };
+
+  boardScene.draw(context, cells, {
+    theme: {},
+    feedbackMessage: feedbackMessage,
+    feedbackType: "info",
+    completionSummary: null,
+    completionVisible: false,
+    statsOverlayVisible: false,
+    statsSnapshot: null,
+    t: createTranslator("zh-CN"),
+    title: "方庭九屿",
+    difficultyLabel: "零基础教学",
+    settingsLabel: ""
+  });
+
+  assert.equal(feedbackPanelTops.length, 1);
+  assert.ok(feedbackPanelTops[0] >= metrics.headerPanelTop + metrics.headerPanelHeight + 4);
+  feedbackLines.forEach(function (line) {
+    assert.ok(line.x + line.width <= metrics.boardLeft + metrics.boardSize - 12);
+  });
 });
 
 test("board scene shows hint progress inside the feedback panel", function () {
@@ -2915,6 +3390,44 @@ test("loadProgress falls back to default progress when storage is empty", functi
   assert.equal(progress.totalPoints, 0);
 });
 
+test("tutorial progress uses isolated storage and normalizes completed lessons", function () {
+  const writes = [];
+  const progress = loadTutorialProgress({
+    getStorageSync: function () {
+      return { completedLessonIds: ["foundation-001", "invalid"] };
+    }
+  });
+
+  assert.deepEqual(progress, { completedLessonIds: ["foundation-001"] });
+  assert.equal(saveTutorialProgress(progress, {
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    }
+  }), true);
+  assert.deepEqual(writes[0], [STORAGE_KEYS.tutorialProgress, progress]);
+});
+
+test("puzzle selection history storage normalizes and persists independently", function () {
+  const writes = [];
+  const loaded = loadPuzzleSelectionHistory(puzzles, {
+    getStorageSync: function (key) {
+      assert.equal(key, STORAGE_KEYS.puzzleSelectionHistory);
+      return {
+        completedPuzzleIdsByDifficulty: { beginner: ["beginner-001", "missing"] },
+        recentExamPuzzleIdsByDifficulty: { beginner: ["beginner-002"] }
+      };
+    }
+  });
+
+  assert.deepEqual(loaded.completedPuzzleIdsByDifficulty.beginner, ["beginner-001"]);
+  assert.equal(savePuzzleSelectionHistory(loaded, puzzles, {
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    }
+  }), true);
+  assert.deepEqual(writes[0], [STORAGE_KEYS.puzzleSelectionHistory, loaded]);
+});
+
 test("saveProgress writes the progress payload", function () {
   const writes = [];
   const saved = saveProgress(createEmptyProgress(), {
@@ -2927,6 +3440,29 @@ test("saveProgress writes the progress payload", function () {
   assert.equal(writes[0][0], STORAGE_KEYS.progress);
 });
 
+test("solution count stops after detecting a second solution", function () {
+  const emptyGrid = "000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+  assert.equal(typeof countSolutions, "function");
+  assert.equal(countSolutions(emptyGrid, 2), 2);
+  assert.equal(countSolutions(puzzles[0].puzzle, 2), 1);
+});
+
+test("validatePuzzle rejects a puzzle with multiple solutions", function () {
+  const errors = [];
+  const ambiguousPuzzle = Object.assign({}, puzzles.find(function (puzzle) {
+    return puzzle.id === "beginner-011";
+  }), {
+    puzzle: "302050000009070020076029300000000000294601000580090034740000000060000403000904850"
+  });
+
+  validatePuzzle(ambiguousPuzzle, {}, errors);
+
+  assert.deepEqual(errors, [
+    "beginner-011: puzzle must have exactly one solution."
+  ]);
+});
+
 test("validatePuzzle reports invalid advanced hint metadata", function () {
   const errors = [];
   const seenIds = {};
@@ -2934,7 +3470,7 @@ test("validatePuzzle reports invalid advanced hint metadata", function () {
   validatePuzzle({
     id: "expert-invalid",
     difficulty: "expert",
-    puzzle: "000000012000000003002300000070050000000000000000040080000009600400000000830000000",
+    puzzle: "000970000080000090002018005006002900000007030001040000200039670400500000000000100",
     solution: "653974812184265793792318465376852941548197236921643587215439678467581329839726154",
     techniques: ["x-wing"],
     hint: {
@@ -2958,13 +3494,34 @@ test("validatePuzzle requires hint metadata for advanced puzzles", function () {
   validatePuzzle({
     id: "skilled-missing-hint",
     difficulty: "skilled",
-    puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+    puzzle: "006000090000002500010045003937000058005003000060804700000000900300008000804000001",
     solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
     techniques: ["naked-pair", "box-line-reduction"]
   }, seenIds, errors);
 
   assert.deepEqual(errors, [
     "skilled-missing-hint: advanced puzzles must provide hint metadata."
+  ]);
+});
+
+test("validatePuzzle requires valid tutorial steps for foundation lessons", function () {
+  const errors = [];
+  const seenIds = {};
+  const invalidLesson = Object.assign({}, foundationLessons[0], {
+    id: "foundation-invalid",
+    tutorialSteps: [{
+      targetIndex: 2,
+      relatedIndexes: [2, 99],
+      explanationKey: ""
+    }]
+  });
+
+  validatePuzzle(invalidLesson, seenIds, errors);
+
+  assert.deepEqual(errors, [
+    "foundation-invalid: tutorialSteps[0].relatedIndexes cannot contain targetIndex.",
+    "foundation-invalid: tutorialSteps[0].relatedIndexes[1] must be an integer from 0 to 80.",
+    "foundation-invalid: tutorialSteps[0].explanationKey must be a non-empty string."
   ]);
 });
 
@@ -3037,7 +3594,7 @@ test("validatePuzzleBank reports duplicate puzzle layouts within the same diffic
     {
       id: "skilled-dup-a",
       difficulty: "skilled",
-      puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+      puzzle: "006000090000002500010045003937000058005003000060804700000000900300008000804000001",
       solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
       techniques: ["naked-pair", "box-line-reduction"],
       hint: {
@@ -3052,7 +3609,7 @@ test("validatePuzzleBank reports duplicate puzzle layouts within the same diffic
     {
       id: "skilled-dup-b",
       difficulty: "skilled",
-      puzzle: "040000000000600004018040000900006008080090020100800009000030980300008000000000060",
+      puzzle: "006000090000002500010045003937000058005003000060804700000000900300008000804000001",
       solution: "546371892793682514218945673937216458485793126162854739621437985359168247874529361",
       techniques: ["naked-pair", "box-line-reduction"],
       hint: {
@@ -3091,7 +3648,7 @@ test("validatePuzzleBank reports structure diversity shortfalls", function () {
   );
 });
 
-test("puzzle data contains all four supported difficulties", function () {
+test("puzzle data contains all supported difficulties", function () {
   const difficulties = Array.from(new Set(puzzles.map(function (puzzle) {
     return puzzle.difficulty;
   })));
@@ -3104,16 +3661,24 @@ test("puzzle data contains all four supported difficulties", function () {
     "beginner",
     "intermediate",
     "skilled",
-    "expert"
+    "expert",
+    "foundation"
   ]);
   assert.ok(countsByDifficulty.beginner >= 10);
   assert.ok(countsByDifficulty.intermediate >= 10);
   assert.ok(countsByDifficulty.skilled >= 10);
   assert.ok(countsByDifficulty.expert >= 10);
+  assert.equal(countsByDifficulty.foundation, 3);
 });
 
-test("puzzle bank currently expands to 60 puzzles", function () {
-  assert.equal(puzzles.length, 60);
+test("puzzle bank currently expands to 63 puzzles", function () {
+  assert.equal(puzzles.length, 63);
+});
+
+test("puzzle bank contains exactly one solution per puzzle", function () {
+  puzzles.forEach(function (puzzle) {
+    assert.equal(countSolutions(puzzle.puzzle, 2), 1, puzzle.id);
+  });
 });
 
 test("puzzle validation script accepts the current puzzle bank", function () {
@@ -3137,6 +3702,7 @@ test("puzzle summary script reports structure clusters by difficulty", function 
   assert.match(result.stdout, /intermediate: count=15/);
   assert.match(result.stdout, /skilled: count=15/);
   assert.match(result.stdout, /expert: count=15/);
+  assert.match(result.stdout, /foundation: count=3/);
   assert.match(result.stdout, /givens=/);
   assert.match(result.stdout, /hintCoverage=/);
   assert.match(result.stdout, /duplicatePuzzles=/);
@@ -3188,8 +3754,8 @@ test("skilled and expert puzzle banks keep a tighter givens range", function () 
 
   assert.ok(skilledRange.min >= 21);
   assert.ok(skilledRange.max <= 28);
-  assert.ok(expertRange.min >= 14);
-  assert.ok(expertRange.max <= 20);
+  assert.ok(expertRange.min >= 17);
+  assert.ok(expertRange.max <= 23);
 });
 
 test("skilled and expert puzzle metadata stays aligned with their intended technique bands", function () {
@@ -3334,6 +3900,397 @@ test("main entry boots into the home screen using the stored language", function
   }
 });
 
+test("main entry redraws the active screen when the minigame returns to foreground", function () {
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let foregroundHandler = null;
+  let clearCount = 0;
+  const context = {
+    fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1,
+    clearRect: function () { clearCount += 1; }, fillRect: function () {},
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {},
+    stroke: function () {}, fill: function () {}, arcTo: function () {},
+    closePath: function () {}, fillText: function () {}
+  };
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () { return { width: 375, height: 812, getContext: function () { return context; } }; },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function () { return ""; },
+    onTouchStart: function () {},
+    onShow: function (handler) { foregroundHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(typeof foregroundHandler, "function");
+    clearCount = 0;
+    foregroundHandler();
+    assert.equal(clearCount, 1);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry completes foundation lessons without normal rewards", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const homeScene = createHomeScene({ canvasWidth: 375, canvasHeight: 812 });
+  const tutorialScene = require("../js/scene/tutorial-scene").createTutorialScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const boardScene = createBoardScene({ canvasWidth: 375, canvasHeight: 812 });
+  const toolbar = createToolbar({
+    canvasWidth: 375,
+    canvasHeight: 812,
+    boardMetrics: boardScene.getMetrics()
+  });
+  const translator = createTranslator("zh-CN");
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) { texts.push(String(text)); }
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return createEmptyProgress();
+      }
+      return "";
+    },
+    setStorageSync: function (key, value) { writes.push([key, value]); },
+    onTouchStart: function (handler) { touchHandler = handler; }
+  };
+
+  function tap(x, y) {
+    touchHandler({ touches: [{ clientX: x, clientY: y }] });
+  }
+
+  function selectLesson(lessonIndex) {
+    const metrics = tutorialScene.getMetrics();
+    tap(metrics.cardLeft + 16, metrics.cardTop + lessonIndex * (metrics.cardHeight + metrics.cardGap) + 16);
+  }
+
+  function enterValue(value) {
+    const metrics = toolbar.getMetrics();
+    tap(
+      metrics.left + (metrics.width / 9) * (Number(value) - 0.5),
+      metrics.top + metrics.numberHeight / 2
+    );
+  }
+
+  function confirmLessonCompletion() {
+    const metrics = boardScene.getMetrics();
+    tap(
+      metrics.completionCardLeft + metrics.completionCardWidth / 2,
+      metrics.completionCardTop + metrics.completionCardHeight - 53
+    );
+  }
+
+  try {
+    require("../js/main");
+    const homeMetrics = homeScene.getMetrics({
+      initialExamChoiceVisible: true,
+      selectedDifficulty: "beginner",
+      t: translator
+    });
+    tap(
+      homeMetrics.difficultyLeft + 16,
+      homeMetrics.difficultyTop + 16
+    );
+
+    selectLesson(0);
+    const firstLesson = foundationLessons[0];
+    const firstStep = firstLesson.tutorialSteps[0];
+    const wrongValue = firstLesson.solution[firstStep.targetIndex] === "1" ? "2" : "1";
+    const gameWritesBeforeWrongInput = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).length;
+    enterValue(wrongValue);
+    assert.equal(texts.includes("这个数字不符合当前的行、列或宫。再看高亮区域。"), true);
+    assert.equal(writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).length, gameWritesBeforeWrongInput);
+
+    enterValue(firstLesson.solution[firstStep.targetIndex]);
+    const afterFirstStep = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop()[1];
+    assert.equal(afterFirstStep.game.cells[firstStep.targetIndex].value, firstLesson.solution[firstStep.targetIndex]);
+    assert.deepEqual(afterFirstStep.tutorialState, { lessonId: firstLesson.id, stepIndex: 1 });
+    assert.equal(afterFirstStep.selectedIndex, firstLesson.tutorialSteps[1].targetIndex);
+
+    for (let stepIndex = 1; stepIndex < firstLesson.tutorialSteps.length; stepIndex += 1) {
+      const step = firstLesson.tutorialSteps[stepIndex];
+      enterValue(firstLesson.solution[step.targetIndex]);
+    }
+    assert.equal(texts.includes("第一课完成"), true);
+    assert.equal(texts.includes("你已经知道：每一行都要包含 1-9。"), true);
+    assert.equal(texts.includes("知道了"), true);
+    confirmLessonCompletion();
+
+    for (let lessonIndex = 1; lessonIndex < foundationLessons.length; lessonIndex += 1) {
+      const lesson = foundationLessons[lessonIndex];
+      selectLesson(lessonIndex);
+      lesson.tutorialSteps.forEach(function (step) {
+        enterValue(lesson.solution[step.targetIndex]);
+      });
+      if (lessonIndex < foundationLessons.length - 1) {
+        assert.equal(texts.includes("第二课完成"), true);
+        confirmLessonCompletion();
+      }
+    }
+
+    assert.equal(texts.includes("三课完成"), true);
+    assert.equal(texts.includes("进入新手局"), true);
+    assert.equal(texts.includes("重练课程"), true);
+    assert.equal(writes.some(function (entry) { return entry[0] === STORAGE_KEYS.progress; }), false);
+    assert.equal(writes.some(function (entry) { return entry[0] === STORAGE_KEYS.stats; }), false);
+    assert.deepEqual(
+      writes.filter(function (entry) { return entry[0] === STORAGE_KEYS.tutorialProgress; }).pop()[1],
+      { completedLessonIds: ["foundation-001", "foundation-002", "foundation-003"] }
+    );
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry shows continue for an unfinished tutorial save", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const lesson = foundationLessons[0];
+  const firstStep = lesson.tutorialSteps[0];
+  const savedSession = {
+    game: createGame(lesson),
+    selectedIndex: firstStep.targetIndex,
+    noteMode: false,
+    tutorialState: { lessonId: lesson.id, stepIndex: 0 }
+  };
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) { texts.push(String(text)); }
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.currentGame) {
+        return savedSession;
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return createEmptyProgress();
+      }
+      return "";
+    },
+    onTouchStart: function () {}
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(texts.includes("继续游戏"), true);
+    assert.equal(texts.includes("零基础教学"), true);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry restarts a tutorial from its first teaching target", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const lesson = foundationLessons[0];
+  const firstStep = lesson.tutorialSteps[0];
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1,
+            clearRect: function () {}, fillRect: function () {}, beginPath: function () {},
+            moveTo: function () {}, lineTo: function () {}, stroke: function () {}, fill: function () {},
+            arcTo: function () {}, closePath: function () {}, fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.currentGame) {
+        return {
+          game: createGame(lesson),
+          selectedIndex: firstStep.targetIndex,
+          noteMode: false,
+          tutorialState: { lessonId: lesson.id, stepIndex: 0 }
+        };
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return createEmptyProgress();
+      }
+      return "";
+    },
+    setStorageSync: function (key, value) { writes.push([key, value]); },
+    onTouchStart: function (handler) { touchHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    const homeMetrics = createHomeScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics();
+    const boardMetrics = createBoardScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics();
+    const settingsMetrics = createSettingsScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics({
+      showResumeAction: true
+    });
+
+    touchHandler({ touches: [{ clientX: homeMetrics.primaryButtonLeft + 20, clientY: homeMetrics.primaryButtonTop + 20 }] });
+    touchHandler({ touches: [{ clientX: boardMetrics.settingsLeft + 20, clientY: boardMetrics.settingsTop + 16 }] });
+    touchHandler({ touches: [{ clientX: settingsMetrics.contentLeft + 20, clientY: settingsMetrics.restartCardTop + 20 }] });
+
+    const restartedSession = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop()[1];
+    assert.equal(restartedSession.game.difficulty, "foundation");
+    assert.deepEqual(restartedSession.tutorialState, { lessonId: lesson.id, stepIndex: 0 });
+    assert.equal(restartedSession.selectedIndex, firstStep.targetIndex);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry exits note mode and selects the hint target", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const game = createGame(puzzles[0]);
+  const expectedTargetIndex = getNextHint(game, game.difficulty, {
+    currentLevel: null,
+    targetIndex: -1
+  }).targetIndex;
+  const savedSession = {
+    game: Object.assign({}, game, { history: [{}] }),
+    selectedIndex: 2,
+    noteMode: true
+  };
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375, height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1,
+            clearRect: function () {}, fillRect: function () {}, beginPath: function () {},
+            moveTo: function () {}, lineTo: function () {}, stroke: function () {},
+            fill: function () {}, arcTo: function () {}, closePath: function () {}, fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) return { preferredDifficulty: "beginner", language: "zh-CN" };
+      if (key === STORAGE_KEYS.currentGame) return savedSession;
+      return "";
+    },
+    setStorageSync: function (key, value) { writes.push([key, value]); },
+    onTouchStart: function (handler) { touchHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    const homeMetrics = createHomeScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics({
+      difficultyPickerOpen: false, t: createTranslator("zh-CN")
+    });
+    const boardScene = createBoardScene({ canvasWidth: 375, canvasHeight: 812 });
+    const toolbarMetrics = createToolbar({
+      canvasWidth: 375, canvasHeight: 812, boardMetrics: boardScene.getMetrics()
+    }).getMetrics();
+    touchHandler({ touches: [{ clientX: homeMetrics.primaryButtonLeft + 20, clientY: homeMetrics.primaryButtonTop + 20 }] });
+    touchHandler({ touches: [{
+      clientX: toolbarMetrics.left + toolbarMetrics.width * 0.7,
+      clientY: toolbarMetrics.toolTop + toolbarMetrics.toolHeight / 2
+    }] });
+    const savedGame = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+
+    assert.equal(savedGame[1].selectedIndex, expectedTargetIndex);
+    assert.equal(savedGame[1].noteMode, false);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
 test("main entry enables WeChat share menu during boot", function () {
   const calls = [];
   const originalWx = global.wx;
@@ -3463,6 +4420,65 @@ test("main entry configures a high-DPR canvas during boot", function () {
     assert.equal(canvas.width, 1125);
     assert.equal(canvas.height, 2436);
     assert.deepEqual(scaleCalls[0], [3, 3]);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry restores high-DPR canvas backing on foreground", function () {
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let foregroundHandler = null;
+  const transformCalls = [];
+  const canvas = {
+    width: 375,
+    height: 812,
+    getContext: function () {
+      return {
+        fillStyle: "",
+        font: "",
+        textAlign: "",
+        textBaseline: "",
+        lineWidth: 1,
+        clearRect: function () {},
+        fillRect: function () {},
+        beginPath: function () {},
+        moveTo: function () {},
+        lineTo: function () {},
+        stroke: function () {},
+        fill: function () {},
+        arcTo: function () {},
+        closePath: function () {},
+        fillText: function () {},
+        setTransform: function (a, b, c, d, e, f) {
+          transformCalls.push([a, b, c, d, e, f]);
+        }
+      };
+    }
+  };
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () { return canvas; },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getWindowInfo: function () {
+      return { windowWidth: 375, windowHeight: 812, pixelRatio: 3 };
+    },
+    getStorageSync: function () { return ""; },
+    onTouchStart: function () {},
+    onShow: function (handler) { foregroundHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    canvas.width = 375;
+    canvas.height = 812;
+    foregroundHandler();
+
+    assert.equal(canvas.width, 1125);
+    assert.equal(canvas.height, 2436);
+    assert.deepEqual(transformCalls.pop(), [3, 0, 0, 3, 0, 0]);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -4075,7 +5091,7 @@ test("main entry pauses elapsed time in settings and can resume back to the boar
   }
 });
 
-test("main entry restricts settings actions during an exam and sends back to home", function () {
+test("main entry exits an active exam when settings returns home", function () {
   const texts = [];
   const writes = [];
   const originalWx = global.wx;
@@ -4239,8 +5255,14 @@ test("main entry restricts settings actions during an exam and sends back to hom
       }]
     });
 
-    assert.ok(texts.includes("首次进入，先完成一次难度测试"));
-    assert.ok(texts.includes("回到首页"));
+    assert.ok(texts.includes("开始新局"));
+    assert.equal(texts.some(function (text) {
+      return text.indexOf("首次进入，先完成一次难度测试") >= 0;
+    }), false);
+    const savedSession = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+    assert.equal(savedSession[1].examState, null);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -4864,6 +5886,7 @@ test("main entry shows completion card and writes stats when a game is completed
   const expertPuzzle = puzzles.find(function (puzzle) {
     return puzzle.difficulty === "expert";
   });
+  const completionIndex = expertPuzzle.puzzle.indexOf("0");
   const nearCompleteSession = {
     game: {
       puzzleId: expertPuzzle.id,
@@ -4871,7 +5894,7 @@ test("main entry shows completion card and writes stats when a game is completed
       puzzle: expertPuzzle.puzzle,
       solution: expertPuzzle.solution,
       cells: expertPuzzle.solution.split("").map(function (value, index) {
-        const isMissing = index === 2;
+        const isMissing = index === completionIndex;
         const isGiven = expertPuzzle.puzzle[index] !== "0";
         return {
           index: index,
@@ -4980,12 +6003,12 @@ test("main entry shows completion card and writes stats when a game is completed
 
     touchHandler({
       touches: [{
-        clientX: boardMetrics.boardLeft + boardMetrics.cellSize * 2.5,
-        clientY: boardMetrics.boardTop + boardMetrics.cellSize * 0.5
+        clientX: boardMetrics.boardLeft + boardMetrics.cellSize * ((completionIndex % 9) + 0.5),
+        clientY: boardMetrics.boardTop + boardMetrics.cellSize * (Math.floor(completionIndex / 9) + 0.5)
       }]
     });
 
-    const expectedCompletionValue = Number(expertPuzzle.solution[2]);
+    const expectedCompletionValue = Number(expertPuzzle.solution[completionIndex]);
 
     touchHandler({
       touches: [{
@@ -5003,6 +6026,12 @@ test("main entry shows completion card and writes stats when a game is completed
 
     assert.ok(savedStats);
     assert.equal(savedStats[1].hintCountByDifficulty.expert, 0);
+    const savedSelectionHistory = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.puzzleSelectionHistory;
+    });
+
+    assert.ok(savedSelectionHistory);
+    assert.deepEqual(savedSelectionHistory[1].completedPuzzleIdsByDifficulty.expert, [expertPuzzle.id]);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -5103,7 +6132,7 @@ test("main entry opens locked difficulty exam flow from home", function () {
     touchHandler({
       touches: [{
         clientX: expandedMetrics.difficultyLeft + 20,
-        clientY: expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20
+        clientY: expandedMetrics.difficultyTop + 2 * (expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap) + 20
       }]
     });
 
@@ -5194,7 +6223,7 @@ test("initial exam choices all start with the same 10-minute limit", function ()
       touchHandler({
         touches: [{
           clientX: metrics.difficultyLeft + 20,
-          clientY: metrics.difficultyTop + index * (metrics.difficultyHeight + metrics.difficultyGap) + 20
+          clientY: metrics.difficultyTop + (index + 1) * (metrics.difficultyHeight + metrics.difficultyGap) + 20
         }]
       });
 
@@ -5277,6 +6306,69 @@ test("main entry shows initial exam difficulty choice on first launch", function
     assert.ok(texts.some(function (text) { return String(text).indexOf("首次进入，先完成一次难度测试") >= 0; }));
     assert.ok(texts.some(function (text) { return String(text).indexOf("在时限内完成，可解锁当前难度及以下难度") >= 0; }));
     assert.equal(texts.includes("开始新局"), false);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry skips the initial exam after a normal game was completed", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  const completedStats = Object.assign(createEmptyStats(), {
+    totalCompleted: 1,
+    lastCompletedAt: "2026-07-16T10:00:00.000Z",
+    lastCompletedDifficulty: "beginner",
+    lastElapsedSeconds: 180
+  });
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) { texts.push(String(text)); }
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.stats) {
+        return completedStats;
+      }
+      return "";
+    },
+    onTouchStart: function () {}
+  };
+
+  try {
+    require("../js/main");
+    assert.equal(texts.includes("开始新局"), true);
+    assert.equal(texts.some(function (text) {
+      return text.indexOf("首次进入，先完成一次难度测试") >= 0;
+    }), false);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -5369,7 +6461,7 @@ test("main entry lets locked difficulty dialog switch to points view", function 
     touchHandler({
       touches: [{
         clientX: expandedMetrics.difficultyLeft + 20,
-        clientY: expandedMetrics.difficultyTop + expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap + 20
+        clientY: expandedMetrics.difficultyTop + 2 * (expandedMetrics.difficultyHeight + expandedMetrics.difficultyGap) + 20
       }]
     });
 
@@ -5560,11 +6652,103 @@ test("main entry does not award points when an exam is finished after timeout", 
     assert.ok(savedProgress);
     assert.equal(savedProgress[1].totalPoints, 0);
     assert.ok(texts.includes("本局不计入积分"));
+    const savedSelectionHistory = writes.find(function (entry) {
+      return entry[0] === STORAGE_KEYS.puzzleSelectionHistory;
+    });
+
+    assert.ok(savedSelectionHistory);
+    assert.deepEqual(savedSelectionHistory[1].recentExamPuzzleIdsByDifficulty.beginner, [beginnerPuzzle.id]);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
     global.setInterval = originalSetInterval;
     global.clearInterval = originalClearInterval;
+  }
+});
+
+test("selection history main entry avoids a timed-out exam puzzle after restart", function () {
+  const writes = [];
+  const originalWx = global.wx;
+  const originalRandom = Math.random;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const timedOutPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.id === "beginner-001";
+  });
+
+  delete require.cache[mainPath];
+  Math.random = function () { return 0; };
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function () {}
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return createEmptyProgress();
+      }
+      if (key === STORAGE_KEYS.puzzleSelectionHistory) {
+        return {
+          completedPuzzleIdsByDifficulty: {},
+          recentExamPuzzleIdsByDifficulty: { beginner: [timedOutPuzzle.id] }
+        };
+      }
+      return "";
+    },
+    setStorageSync: function (key, value) { writes.push([key, value]); },
+    onTouchStart: function (handler) { touchHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    const homeMetrics = createHomeScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics({
+      initialExamChoiceVisible: true,
+      selectedDifficulty: "beginner",
+      t: createTranslator("zh-CN")
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.difficultyLeft + 16,
+        clientY: homeMetrics.difficultyTop + homeMetrics.difficultyHeight + homeMetrics.difficultyGap + 16
+      }]
+    });
+
+    const startedExam = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+
+    assert.ok(startedExam);
+    assert.notEqual(startedExam[1].game.puzzleId, timedOutPuzzle.id);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+    Math.random = originalRandom;
   }
 });
 
