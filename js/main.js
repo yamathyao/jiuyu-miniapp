@@ -396,6 +396,15 @@ function boot() {
     });
   }
 
+  function restoreUnlockedDifficultySelection() {
+    if (isDifficultyUnlocked(progress, selectedDifficulty)) {
+      return;
+    }
+
+    selectedDifficulty = "beginner";
+    persistSettingsState();
+  }
+
   function applyGameSnapshot(nextGame, nextSelectedIndex, nextNoteMode) {
     game = nextGame;
     selectedIndex = nextSelectedIndex;
@@ -462,7 +471,8 @@ function boot() {
   }
 
   function openCompletionState() {
-    const passedExam = Boolean(examState && examState.active && !examState.deadlineReached);
+    const completedExam = Boolean(examState && examState.active);
+    const passedExam = Boolean(completedExam && !examState.deadlineReached);
     const pointsAwarded = finalizeProgressRewards();
     const summary = createCompletionSummary({
       difficulty: game.difficulty,
@@ -475,7 +485,9 @@ function boot() {
     });
 
     completionSummary = Object.assign({}, summary, {
-      pointsAwarded: pointsAwarded
+      pointsAwarded: pointsAwarded,
+      examFailed: Boolean(completedExam && !passedExam),
+      examPassed: passedExam
     });
     stats = applyCompletionToStats(stats, summary);
     saveStats(stats);
@@ -657,7 +669,6 @@ function boot() {
 
   function startExamGame(difficulty) {
     const puzzle = selectExamPuzzle(puzzles, difficulty, puzzleSelectionHistory);
-    selectedDifficulty = difficulty;
     resetCompletionState();
     clearFeedbackState();
     clearLockedDifficultyDialog();
@@ -1166,6 +1177,11 @@ function boot() {
         return;
       }
 
+      if (completionAction.value === "retry-exam") {
+        startExamGame(completionSummary.difficulty);
+        return;
+      }
+
       if (completionAction.value === "continue-tutorial") {
         resetCompletionState();
         openTutorial();
@@ -1187,6 +1203,7 @@ function boot() {
 
       if (completionAction.value === "home") {
         resetCompletionState();
+        restoreUnlockedDifficultySelection();
         switchScreen("home");
         return;
       }

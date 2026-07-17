@@ -151,6 +151,16 @@ function createBoardScene(options) {
       return ["start-beginner", "replay-tutorial", "home"];
     }
 
+    if (summary && summary.examFailed) {
+      return ["retry-exam", "home"];
+    }
+
+    if (summary && summary.examPassed) {
+      return isAdvancedDifficulty(summary.difficulty)
+        ? ["home", "stats"]
+        : ["home"];
+    }
+
     return isAdvancedDifficulty(summary.difficulty)
       ? ["new-game", "home", "stats"]
       : ["new-game", "home"];
@@ -471,6 +481,8 @@ function createBoardScene(options) {
         buttonHeight,
         action === "new-game"
           ? t("completion.nextAction")
+          : action === "retry-exam"
+            ? t("completion.nextAction")
           : action === "continue-tutorial"
             ? t("tutorial.lessonComplete.ok")
           : action === "start-beginner"

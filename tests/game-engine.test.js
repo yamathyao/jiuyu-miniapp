@@ -2278,10 +2278,20 @@ test("board scene exposes layered completion actions by difficulty", function ()
     difficulty: "foundation",
     tutorialLesson: true
   });
+  const failedExamActions = boardScene.getCompletionActions({
+    difficulty: "intermediate",
+    examFailed: true
+  });
+  const passedExamActions = boardScene.getCompletionActions({
+    difficulty: "intermediate",
+    examPassed: true
+  });
 
   assert.deepEqual(beginnerActions, ["new-game", "home"]);
   assert.deepEqual(expertActions, ["new-game", "home", "stats"]);
   assert.deepEqual(tutorialLessonActions, ["continue-tutorial"]);
+  assert.deepEqual(failedExamActions, ["retry-exam", "home"]);
+  assert.deepEqual(passedExamActions, ["home"]);
 });
 
 test("home scene shows the saved game's difficulty beneath continue", function () {
@@ -6032,6 +6042,134 @@ test("main entry shows completion card and writes stats when a game is completed
 
     assert.ok(savedSelectionHistory);
     assert.deepEqual(savedSelectionHistory[1].completedPuzzleIdsByDifficulty.expert, [expertPuzzle.id]);
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry returns a failed exam completion to an unlocked home difficulty", function () {
+  const texts = [];
+  const writes = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+  const examPuzzle = puzzles.find(function (puzzle) {
+    return puzzle.difficulty === "intermediate";
+  });
+  const completionIndex = examPuzzle.puzzle.indexOf("0");
+  const nearCompleteGame = createGame(examPuzzle);
+
+  nearCompleteGame.cells = nearCompleteGame.cells.map(function (cell, index) {
+    return Object.assign({}, cell, {
+      value: index === completionIndex ? "" : examPuzzle.solution[index]
+    });
+  });
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "",
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            lineWidth: 1,
+            clearRect: function () {},
+            fillRect: function () {},
+            beginPath: function () {},
+            moveTo: function () {},
+            lineTo: function () {},
+            stroke: function () {},
+            fill: function () {},
+            arcTo: function () {},
+            closePath: function () {},
+            fillText: function (text) { texts.push(String(text)); }
+          };
+        }
+      };
+    },
+    createImage: function () {
+      return { onload: null, onerror: null, src: "" };
+    },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "intermediate", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.currentGame) {
+        return {
+          game: nearCompleteGame,
+          selectedIndex: -1,
+          noteMode: false,
+          examState: {
+            active: true,
+            difficulty: "intermediate",
+            timeLimitSeconds: 600,
+            deadlineReached: true
+          }
+        };
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return createEmptyProgress();
+      }
+      return "";
+    },
+    setStorageSync: function (key, value) {
+      writes.push([key, value]);
+    },
+    onTouchStart: function (handler) {
+      touchHandler = handler;
+    }
+  };
+
+  try {
+    require("../js/main");
+    const homeMetrics = createHomeScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics({
+      difficultyPickerOpen: false,
+      t: createTranslator("zh-CN")
+    });
+    const boardScene = createBoardScene({ canvasWidth: 375, canvasHeight: 812 });
+    const boardMetrics = boardScene.getMetrics();
+    const toolbarMetrics = createToolbar({
+      canvasWidth: 375,
+      canvasHeight: 812,
+      boardMetrics: boardMetrics
+    }).getMetrics();
+    const actions = ["retry-exam", "home"];
+    const completionButtonWidth = Math.floor(
+      (boardMetrics.completionCardWidth - 36 - 12) / actions.length
+    );
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.boardLeft + boardMetrics.cellSize * ((completionIndex % 9) + 0.5),
+        clientY: boardMetrics.boardTop + boardMetrics.cellSize * (Math.floor(completionIndex / 9) + 0.5)
+      }]
+    });
+    touchHandler({
+      touches: [{
+        clientX: toolbarMetrics.left + (toolbarMetrics.width / 9) * (Number(examPuzzle.solution[completionIndex]) - 0.5),
+        clientY: toolbarMetrics.top + toolbarMetrics.numberHeight / 2
+      }]
+    });
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.completionCardLeft + 18 + completionButtonWidth + 12 + 12,
+        clientY: boardMetrics.completionCardTop + boardMetrics.completionCardHeight - 54
+      }]
+    });
+    assert.equal(texts.includes("当前难度: 新手"), true);
+    assert.equal(texts.includes("当前难度: 中级"), false);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
