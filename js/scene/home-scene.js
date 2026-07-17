@@ -24,13 +24,17 @@ function restoreAlpha(context, alpha) {
   context.globalAlpha = alpha;
 }
 
-function drawWrappedText(context, text, centerX, top, maxWidth, lineHeight, maxLines) {
-  const words = String(text || "").split(" ");
+function getWrappedTextLines(context, text, maxWidth, maxLines) {
+  const copy = String(text || "");
+  const useWordBreaks = copy.indexOf(" ") >= 0;
+  const words = useWordBreaks ? copy.split(" ") : Array.from(copy);
   const lines = [];
   let currentLine = "";
 
   words.forEach(function (word) {
-    const nextLine = currentLine ? currentLine + " " + word : word;
+    const nextLine = currentLine
+      ? currentLine + (useWordBreaks ? " " : "") + word
+      : word;
     const nextWidth = typeof context.measureText === "function"
       ? context.measureText(nextLine).width
       : nextLine.length * 8;
@@ -48,7 +52,11 @@ function drawWrappedText(context, text, centerX, top, maxWidth, lineHeight, maxL
     lines.push(currentLine);
   }
 
-  lines.slice(0, maxLines).forEach(function (line, index) {
+  return lines.slice(0, maxLines);
+}
+
+function drawWrappedText(context, text, centerX, top, maxWidth, lineHeight, maxLines) {
+  getWrappedTextLines(context, text, maxWidth, maxLines).forEach(function (line, index) {
     context.fillText(line, centerX, top + lineHeight * index);
   });
 }
@@ -240,7 +248,7 @@ function createHomeScene(options) {
     const lockedDialogCardHeight = 176;
     const lockedDialogCardLeft = contentLeft;
     const lockedDialogCardTop = footerTop + 34;
-    const lockedDialogActionsTop = lockedDialogCardTop + 128;
+    const lockedDialogActionsTop = lockedDialogCardTop + 142;
     const lockedDialogActionWidth = Math.floor((lockedDialogCardWidth - 32) / 2);
     const lockedDialogExamLeft = lockedDialogCardLeft + 16;
     const lockedDialogPointsLeft = lockedDialogCardLeft + lockedDialogCardWidth - 16 - lockedDialogActionWidth;
@@ -782,13 +790,24 @@ function createHomeScene(options) {
 
     context.fillStyle = visualSpec.footerText;
     context.font = "12px sans-serif";
-    context.fillText(dialog.pointsProgress, cardLeft + 16, cardTop + 60);
-    context.fillText(dialog.mode === "points" ? dialog.pointsRemaining : dialog.fallbackHint, cardLeft + 16, cardTop + 86);
-    context.fillText(dialog.examUnlockHint, cardLeft + 16, cardTop + 112);
+    context.fillText(dialog.pointsProgress, cardLeft + 16, cardTop + 54);
+    context.textBaseline = "top";
+    // 日语等无空格文案按字符换行，避免超出弹窗边界。
+    drawWrappedText(
+      context,
+      dialog.mode === "points" ? dialog.pointsRemaining : dialog.fallbackHint,
+      cardLeft + 16,
+      cardTop + 70,
+      cardWidth - 32,
+      14,
+      2
+    );
+    drawWrappedText(context, dialog.examUnlockHint, cardLeft + 16, cardTop + 100, cardWidth - 32, 14, 2);
 
     context.fillStyle = visualSpec.secondaryText;
     context.font = "bold 14px sans-serif";
     context.textAlign = "left";
+    context.textBaseline = "middle";
     context.fillText(dialog.examAction, metrics.lockedDialogExamLeft, metrics.lockedDialogActionsTop);
 
     context.textAlign = "right";

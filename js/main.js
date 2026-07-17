@@ -892,6 +892,12 @@ function boot() {
     if (settingsAction.type === "language") {
       language = settingsAction.value;
       t = createTranslator(language);
+      if (lockedDifficultyDialog) {
+        lockedDifficultyDialog = buildLockedDifficultyDialog(
+          lockedDifficultyDialog.difficulty,
+          lockedDifficultyDialog.mode
+        );
+      }
       languagePickerOpen = false;
       persistSettingsState();
       switchScreen("settings");

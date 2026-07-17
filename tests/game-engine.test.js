@@ -1719,8 +1719,63 @@ test("home scene gives the locked difficulty dialog more vertical breathing room
   });
 
   assert.equal(metrics.lockedDialogCardHeight, 176);
-  assert.equal(metrics.lockedDialogActionsTop - metrics.lockedDialogCardTop, 128);
+  assert.equal(metrics.lockedDialogActionsTop - metrics.lockedDialogCardTop, 142);
   assert.equal(metrics.lockedDialogActionHeight, 28);
+});
+
+test("home scene wraps Japanese locked dialog copy inside its card", function () {
+  const homeScene = createHomeScene({
+    canvasWidth: 375,
+    canvasHeight: 812
+  });
+  const t = createTranslator("ja");
+  const dialog = {
+    title: t("home.lockedDialog.title", { difficulty: t("difficulty.intermediate") }),
+    pointsProgress: t("home.lockedDialog.pointsProgress", { points: "10", cost: "100" }),
+    fallbackHint: t("home.lockedDialog.fallbackHint"),
+    examUnlockHint: t("home.lockedDialog.examUnlockHint"),
+    examAction: t("home.lockedDialog.examAction"),
+    pointsAction: t("home.lockedDialog.pointsAction"),
+    mode: "actions"
+  };
+  const metrics = homeScene.getMetrics({
+    selectedDifficulty: "beginner",
+    lockedDifficultyDialog: dialog,
+    t: t
+  });
+  const textCalls = [];
+  const context = {
+    fillStyle: "", strokeStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1,
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {}, arcTo: function () {},
+    closePath: function () {}, fill: function () {}, stroke: function () {}, fillRect: function () {},
+    measureText: function (text) { return { width: String(text).length * 12 }; },
+    fillText: function (text, x, y) { textCalls.push({ text: String(text), x: x, y: y }); }
+  };
+
+  homeScene.draw(context, {
+    hasSavedGame: false,
+    selectedDifficulty: "beginner",
+    difficultyPickerOpen: false,
+    difficultyStates: {
+      beginner: { unlocked: true },
+      intermediate: { unlocked: false }
+    },
+    lockedDifficultyDialog: dialog,
+    t: t
+  });
+
+  const dialogTextCalls = textCalls.filter(function (call) {
+    return call.y >= metrics.lockedDialogCardTop + 40 &&
+      call.y < metrics.lockedDialogActionsTop - 8;
+  });
+
+  assert.ok(dialogTextCalls.length >= 4);
+  assert.equal(dialogTextCalls.every(function (call) {
+    return context.measureText(call.text).width <= metrics.lockedDialogCardWidth - 32;
+  }), true);
+  assert.equal(textCalls.some(function (call) {
+    return call.text === dialog.examAction && call.y === metrics.lockedDialogActionsTop;
+  }), true);
 });
 
 test("home scene initial exam choice does not show lock copy", function () {
@@ -4858,6 +4913,96 @@ test("main entry can open settings from home and switch language inline", functi
     }).pop();
     assert.ok(savedSettings);
     assert.equal(savedSettings[1].language, "ja");
+  } finally {
+    delete require.cache[mainPath];
+    global.wx = originalWx;
+  }
+});
+
+test("main entry refreshes locked dialog copy after changing language", function () {
+  const texts = [];
+  const originalWx = global.wx;
+  const mainPath = require.resolve("../js/main");
+  let touchHandler = null;
+
+  delete require.cache[mainPath];
+  global.wx = {
+    createCanvas: function () {
+      return {
+        width: 375,
+        height: 812,
+        getContext: function () {
+          return {
+            fillStyle: "", strokeStyle: "", font: "", textAlign: "", textBaseline: "", lineWidth: 1,
+            clearRect: function () {}, fillRect: function () {}, beginPath: function () {},
+            moveTo: function () {}, lineTo: function () {}, stroke: function () {}, fill: function () {},
+            arcTo: function () {}, closePath: function () {}, fillText: function (text) { texts.push(String(text)); }
+          };
+        }
+      };
+    },
+    createImage: function () { return { onload: null, onerror: null, src: "" }; },
+    getStorageSync: function (key) {
+      if (key === STORAGE_KEYS.settings) {
+        return { preferredDifficulty: "beginner", language: "zh-CN" };
+      }
+      if (key === STORAGE_KEYS.progress) {
+        return applyExamPassToProgress(createEmptyProgress(), "beginner", 0);
+      }
+      return "";
+    },
+    setStorageSync: function () {},
+    onTouchStart: function (handler) { touchHandler = handler; }
+  };
+
+  try {
+    require("../js/main");
+    const homeScene = createHomeScene({ canvasWidth: 375, canvasHeight: 812 });
+    const homeMetrics = homeScene.getMetrics({
+      selectedDifficulty: "beginner",
+      t: createTranslator("zh-CN")
+    });
+    const expandedHomeMetrics = homeScene.getMetrics({
+      selectedDifficulty: "beginner",
+      difficultyPickerOpen: true,
+      t: createTranslator("zh-CN")
+    });
+    const settingsMetrics = createSettingsScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics();
+    const languageMetrics = createLanguageScene({ canvasWidth: 375, canvasHeight: 812 }).getMetrics();
+
+    touchHandler({ touches: [{
+      clientX: homeMetrics.difficultyLeft + 20,
+      clientY: homeMetrics.difficultyTop + 20
+    }] });
+    touchHandler({ touches: [{
+      clientX: expandedHomeMetrics.difficultyLeft + 20,
+      clientY: expandedHomeMetrics.difficultyTop +
+        2 * (expandedHomeMetrics.difficultyHeight + expandedHomeMetrics.difficultyGap) + 20
+    }] });
+    touchHandler({ touches: [{
+      clientX: homeMetrics.contentLeft + 20,
+      clientY: homeMetrics.settingsTop + 20
+    }] });
+    touchHandler({ touches: [{
+      clientX: settingsMetrics.languageCardLeft + 20,
+      clientY: settingsMetrics.languageCardTop + 20
+    }] });
+    touchHandler({ touches: [{
+      clientX: languageMetrics.optionLeft + 20,
+      clientY: languageMetrics.optionTop +
+        2 * (languageMetrics.optionHeight + languageMetrics.optionGap) + 20
+    }] });
+
+    const textCountBeforeReturningHome = texts.length;
+    touchHandler({ touches: [{
+      clientX: settingsMetrics.backLeft + 12,
+      clientY: settingsMetrics.backTop + 12
+    }] });
+
+    assert.equal(
+      texts.slice(textCountBeforeReturningHome).includes("中級 はまだ解放されていません"),
+      true
+    );
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
