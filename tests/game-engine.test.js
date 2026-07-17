@@ -4504,6 +4504,8 @@ test("main entry advances and persists elapsed time during an active game", func
   const mainPath = require.resolve("../js/main");
   let touchHandler = null;
   let tick = null;
+  let backgroundHandler = null;
+  let foregroundHandler = null;
 
   delete require.cache[mainPath];
   global.setInterval = function (handler) {
@@ -4565,6 +4567,12 @@ test("main entry advances and persists elapsed time during an active game", func
     },
     onTouchStart: function (handler) {
       touchHandler = handler;
+    },
+    onHide: function (handler) {
+      backgroundHandler = handler;
+    },
+    onShow: function (handler) {
+      foregroundHandler = handler;
     }
   };
 
@@ -4572,6 +4580,8 @@ test("main entry advances and persists elapsed time during an active game", func
     require("../js/main");
     assert.equal(typeof touchHandler, "function");
     assert.equal(typeof tick, "function");
+    assert.equal(typeof backgroundHandler, "function");
+    assert.equal(typeof foregroundHandler, "function");
 
     const homeScene = createHomeScene({
       canvasWidth: 375,
@@ -4591,13 +4601,18 @@ test("main entry advances and persists elapsed time during an active game", func
 
     tick();
     tick();
+    backgroundHandler();
+    tick();
+    tick();
+    foregroundHandler();
+    tick();
 
-    assert.ok(texts.includes("计时 00:02"));
+    assert.ok(texts.includes("计时 00:03"));
     const savedSession = writes.filter(function (entry) {
       return entry[0] === STORAGE_KEYS.currentGame;
     }).pop();
     assert.ok(savedSession);
-    assert.equal(savedSession[1].game.elapsedSeconds, 2);
+    assert.equal(savedSession[1].game.elapsedSeconds, 3);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -5444,7 +5459,7 @@ test("main entry exits exam to normal beginner home", function () {
   }
 });
 
-test("main entry can restart a game from settings and return to board", function () {
+test("main entry normalizes a locked saved difficulty before restarting a game", function () {
   const writes = [];
   const originalWx = global.wx;
   const mainPath = require.resolve("../js/main");
@@ -5539,12 +5554,16 @@ test("main entry can restart a game from settings and return to board", function
       return entry[0] === STORAGE_KEYS.currentGame &&
         entry[1] &&
         entry[1].game &&
-        entry[1].game.difficulty === "expert" &&
+        entry[1].game.difficulty === "beginner" &&
         entry[1].selectedIndex === -1 &&
         entry[1].noteMode === false;
     });
 
     assert.ok(restartedGame);
+    const normalizedSettings = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.settings;
+    }).pop();
+    assert.equal(normalizedSettings[1].preferredDifficulty, "beginner");
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -6042,6 +6061,31 @@ test("main entry shows completion card and writes stats when a game is completed
 
     assert.ok(savedSelectionHistory);
     assert.deepEqual(savedSelectionHistory[1].completedPuzzleIdsByDifficulty.expert, [expertPuzzle.id]);
+
+    const completionButtonWidth = Math.floor((boardMetrics.completionCardWidth - 60) / 3);
+    const currentGameWriteCount = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).length;
+
+    touchHandler({
+      touches: [{
+        clientX: boardMetrics.completionCardLeft + 18 + completionButtonWidth + 24,
+        clientY: boardMetrics.completionCardTop + boardMetrics.completionCardHeight - 54
+      }]
+    });
+
+    touchHandler({
+      touches: [{
+        clientX: homeMetrics.primaryButtonLeft + 20,
+        clientY: homeMetrics.primaryButtonTop + 20
+      }]
+    });
+
+    const savedGames = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    });
+    assert.equal(savedGames.length, currentGameWriteCount + 1);
+    assert.equal(savedGames[savedGames.length - 1][1].game.elapsedSeconds, 0);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;
@@ -6796,6 +6840,13 @@ test("main entry does not award points when an exam is finished after timeout", 
 
     assert.ok(savedSelectionHistory);
     assert.deepEqual(savedSelectionHistory[1].recentExamPuzzleIdsByDifficulty.beginner, [beginnerPuzzle.id]);
+    assert.equal(writes.some(function (entry) {
+      return entry[0] === STORAGE_KEYS.stats;
+    }), false);
+    const savedSession = writes.filter(function (entry) {
+      return entry[0] === STORAGE_KEYS.currentGame;
+    }).pop();
+    assert.equal(savedSession[1].examState, null);
   } finally {
     delete require.cache[mainPath];
     global.wx = originalWx;

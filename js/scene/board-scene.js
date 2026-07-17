@@ -166,6 +166,30 @@ function createBoardScene(options) {
       : ["new-game", "home"];
   }
 
+  function getCompletionActionLabel(action, t) {
+    if (action === "new-game" || action === "retry-exam") {
+      return t("completion.nextAction");
+    }
+
+    if (action === "continue-tutorial") {
+      return t("tutorial.lessonComplete.ok");
+    }
+
+    if (action === "start-beginner") {
+      return t("tutorial.graduation.startBeginner");
+    }
+
+    if (action === "replay-tutorial") {
+      return t("tutorial.graduation.replay");
+    }
+
+    if (action === "home") {
+      return t("completion.homeAction");
+    }
+
+    return t("completion.statsAction");
+  }
+
   function getCellIndexByPoint(x, y) {
     if (
       x < boardLeft ||
@@ -479,19 +503,7 @@ function createBoardScene(options) {
         buttonTop,
         buttonWidth,
         buttonHeight,
-        action === "new-game"
-          ? t("completion.nextAction")
-          : action === "retry-exam"
-            ? t("completion.nextAction")
-          : action === "continue-tutorial"
-            ? t("tutorial.lessonComplete.ok")
-          : action === "start-beginner"
-            ? t("tutorial.graduation.startBeginner")
-            : action === "replay-tutorial"
-              ? t("tutorial.graduation.replay")
-              : action === "home"
-                ? t("completion.homeAction")
-                : t("completion.statsAction"),
+        getCompletionActionLabel(action, t),
         theme
       );
     });

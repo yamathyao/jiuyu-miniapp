@@ -307,6 +307,7 @@ function boot() {
   let feedbackType = "info";
   let issueIndexes = [];
   let settingsEntrySource = "home";
+  let appVisible = true;
   let hintState = {
     currentLevel: null,
     targetIndex: -1,
@@ -396,13 +397,15 @@ function boot() {
     });
   }
 
-  function restoreUnlockedDifficultySelection() {
+  function ensureSelectedDifficultyUnlocked() {
     if (isDifficultyUnlocked(progress, selectedDifficulty)) {
-      return;
+      return false;
     }
 
+    // 遗留存档不能绕过首页和设置页的难度锁定规则。
     selectedDifficulty = "beginner";
     persistSettingsState();
+    return true;
   }
 
   function applyGameSnapshot(nextGame, nextSelectedIndex, nextNoteMode) {
@@ -466,13 +469,10 @@ function boot() {
     };
   }
 
-  function isGameCompleted(nextGame) {
-    return isGameCompletedState(nextGame);
-  }
-
   function openCompletionState() {
     const completedExam = Boolean(examState && examState.active);
     const passedExam = Boolean(completedExam && !examState.deadlineReached);
+    const shouldRecordCompletion = !completedExam || passedExam;
     const pointsAwarded = finalizeProgressRewards();
     const summary = createCompletionSummary({
       difficulty: game.difficulty,
@@ -489,9 +489,9 @@ function boot() {
       examFailed: Boolean(completedExam && !passedExam),
       examPassed: passedExam
     });
-    stats = applyCompletionToStats(stats, summary);
-    saveStats(stats);
-    if (!examState || passedExam) {
+    if (shouldRecordCompletion) {
+      stats = applyCompletionToStats(stats, summary);
+      saveStats(stats);
       puzzleSelectionHistory = recordPuzzleCompletion(
         puzzleSelectionHistory,
         game.puzzleId,
@@ -500,6 +500,9 @@ function boot() {
       persistPuzzleSelectionHistory();
     }
     examState = null;
+    hasSavedGame = false;
+    // 输入落盘发生在结算前，需覆盖旧的考试运行态。
+    persistGameState();
     completionVisible = true;
     statsOverlayVisible = false;
   }
@@ -650,6 +653,7 @@ function boot() {
   }
 
   function startNewGame() {
+    ensureSelectedDifficultyUnlocked();
     const puzzle = selectNormalPuzzle(
       puzzles,
       selectedDifficulty,
@@ -1022,7 +1026,7 @@ function boot() {
   }
 
   function advanceElapsedTime() {
-    if (activeScreen !== "board" || completionVisible || statsOverlayVisible) {
+    if (!appVisible || activeScreen !== "board" || completionVisible || statsOverlayVisible) {
       return;
     }
 
@@ -1076,8 +1080,15 @@ function boot() {
 
   if (typeof wx.onShow === "function") {
     wx.onShow(function () {
+      appVisible = true;
       configureCanvas(canvas, context, viewport);
       draw();
+    });
+  }
+
+  if (typeof wx.onHide === "function") {
+    wx.onHide(function () {
+      appVisible = false;
     });
   }
 
@@ -1203,7 +1214,7 @@ function boot() {
 
       if (completionAction.value === "home") {
         resetCompletionState();
-        restoreUnlockedDifficultySelection();
+        ensureSelectedDifficultyUnlocked();
         switchScreen("home");
         return;
       }
@@ -1258,7 +1269,7 @@ function boot() {
       if (nextGame !== game) {
         clearFeedbackState();
         applyGameSnapshot(nextGame, selectedIndex, noteMode);
-        if (isGameCompleted(nextGame)) {
+        if (isGameCompletedState(nextGame)) {
           openCompletionState();
         }
       }
@@ -1338,6 +1349,7 @@ function boot() {
     }
   });
 
+  ensureSelectedDifficultyUnlocked();
   draw();
 }
 
